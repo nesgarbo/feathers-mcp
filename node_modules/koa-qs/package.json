@@ -1,0 +1,52 @@
+{
+  "name": "koa-qs",
+  "description": "qs for koa",
+  "version": "3.0.0",
+  "author": {
+    "name": "Jonathan Ong",
+    "email": "me@jongleberry.com",
+    "url": "http://jongleberry.com",
+    "twitter": "https://twitter.com/jongleberry"
+  },
+  "contributors": [
+    {
+      "name": "Nick Baugh",
+      "email": "niftylettuce@gmail.com",
+      "url": "http://niftylettuce.com/"
+    },
+    {
+      "name": "Imed Jaberi",
+      "email": "imed_jebari@hotmail.fr",
+      "url": "https://www.3imed-jaberi.com/"
+    }
+  ],
+  "dependencies": {
+    "merge-descriptors": "^1.0.1",
+    "qs": "^6.9.4"
+  },
+  "devDependencies": {
+    "koa": "^2.11.0",
+    "koa-convert": "^1.2.0",
+    "mocha": "^7.1.2",
+    "nyc": "^15.0.1",
+    "rimraf": "^3.0.2",
+    "should": "^13.2.3",
+    "supertest": "^4.0.2",
+    "urllib": "^2.34.2"
+  },
+  "engines": {
+    "node": ">= 8"
+  },
+  "files": [
+    "index.js"
+  ],
+  "license": "MIT",
+  "repository": "koajs/qs",
+  "scripts": {
+    "ci": "npm run coverage",
+    "coverage": "nyc --reporter=lcov --reporter=text-lcov npm test",
+    "postcoverage": "nyc report",
+    "precoverage": "rimraf .nyc_output coverage",
+    "test": "mocha"
+  }
+}

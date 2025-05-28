@@ -1,0 +1,61 @@
+{
+  "name": "feathers-mcp",
+  "description": "MCP implementation for FeathersJS",
+  "version": "1.0.0",
+  "type": "module",
+  "homepage": "https://github.com/nesgarbo/feathers-mcp",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "import": "./dist/index.js",
+    "require": "./dist/index.cjs"
+  },
+  "keywords": [
+    "feathers",
+    "feathers-plugin",
+    "mcp",
+    "modelcontextprotocol",
+    "ai"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nesgarbo/feathers-mcp.git"
+  },
+  "author": {
+    "name": "Nesgarbo",
+    "email": "nesgarbo@icloud.com",
+    "url": "https://github.com/nesgarbo"
+  },
+  "contributors": [
+    {
+      "name": "Vigalo",
+      "url": "https://github.com/vigalo"
+    }
+  ],
+  "bugs": {
+    "url": "https://github.com/nesgarbo/feathers-mcp/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "vitest watch",
+    "build": "tsup src/index.ts --dts --format esm,cjs --out-dir dist",
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@feathersjs/express": "^5.0.34",
+    "@feathersjs/feathers": "^5.0.34",
+    "@feathersjs/koa": "^5.0.34",
+    "@feathersjs/typebox": "^5.0.34",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@types/node": "^22.15.23",
+    "eslint": "^9.27.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}
