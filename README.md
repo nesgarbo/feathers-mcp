@@ -1,9 +1,5 @@
 # feathers-mcp
 
-[![Build Status](https://travis-ci.org/nesgarbo/feathers-mcp.png?branch=master)](https://travis-ci.org/nesgarbo/feathers-mcp)
-[![Code Climate](https://codeclimate.com/github/nesgarbo/feathers-mcp/badges/gpa.svg)](https://codeclimate.com/github/nesgarbo/feathers-mcp)
-[![Test Coverage](https://codeclimate.com/github/nesgarbo/feathers-mcp/badges/coverage.svg)](https://codeclimate.com/github/nesgarbo/feathers-mcp/coverage)
-[![Dependency Status](https://img.shields.io/david/nesgarbo/feathers-mcp.svg?style=flat-square)](https://david-dm.org/nesgarbo/feathers-mcp)
 [![Download Status](https://img.shields.io/npm/dm/feathers-mcp.svg?style=flat-square)](https://www.npmjs.com/package/feathers-mcp)
 
 > MCP implementation for FeathersJS
