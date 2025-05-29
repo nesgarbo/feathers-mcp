@@ -1,7 +1,7 @@
 {
   "name": "feathers-mcp",
   "description": "MCP implementation for FeathersJS",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "homepage": "https://github.com/nesgarbo/feathers-mcp",
   "main": "dist/index.js",

@@ -36113,6 +36113,11 @@ var StreamableHTTPServerTransport = class {
 // src/mcp-server/mcp-server.class.ts
 var import_crypto = require("crypto");
 
+// src/mcp/app.ts
+function isKoaApp(app) {
+  return "context" in app;
+}
+
 // src/utils/typebox-to-zod.ts
 var typeboxToZod = (typeboxSchema) => {
   const applyMetadata = (zodSchema, schema) => {
@@ -36326,15 +36331,26 @@ var McpServerService = class {
           }
           const transport = this.transports[sessionId];
           const progressToken = extra._meta?.progressToken;
-          const emit = this.getEmitFunction(transport, progressToken);
+          const emit = this.getEmitFunction(
+            transport,
+            progressToken
+          );
           try {
-            const result = await tool.handler(args, feathersParams, emit);
+            const result = await tool.handler(
+              args,
+              feathersParams,
+              emit
+            );
             console.log("Tool result:", tool.name, result);
             const res = this.transformToMcpResponse(result);
             console.log("Transformed result:", res);
             return res;
           } catch (error) {
-            console.log("Error in tool handler:", tool.name, error);
+            console.log(
+              "Error in tool handler:",
+              tool.name,
+              error
+            );
             const message = error instanceof Error ? error.message : String(error);
             return {
               content: [
@@ -36379,8 +36395,9 @@ var McpServerService = class {
     if (sessionId && params) {
       this.paramsMap.set(sessionId, params);
     }
-    const req = params?.koaRequest ?? params?.req;
-    const res = params?.koaResponse ?? params?.res;
+    const isKoa = isKoaApp(this.options.app);
+    const req = isKoa ? params?.koaRequest : params?.req;
+    const res = isKoa ? params?.koaResponse : params?.res;
     if (!req || !res) {
       throw new Error("Missing request/response objects");
     }
@@ -36406,7 +36423,11 @@ var McpServerService = class {
           transport = this.transports[sessionId];
           if (transport) {
             try {
-              await transport.handleRequest(req, res, data);
+              await transport.handleRequest(
+                req,
+                res,
+                data
+              );
             } catch (error) {
               console.error(
                 `Error handling notification for session ${sessionId}:`,
@@ -36423,7 +36444,10 @@ var McpServerService = class {
         }
       }
       if (sessionId && this.transports[sessionId]) {
-        console.log("Reusing existing transport for session:", sessionId);
+        console.log(
+          "Reusing existing transport for session:",
+          sessionId
+        );
         transport = this.transports[sessionId];
         try {
           await transport.handleRequest(req, res, data);
@@ -36479,8 +36503,9 @@ var McpServerService = class {
         id: null
       };
     }
-    const req = params.koaRequest ?? params.req;
-    const res = params.koaResponse ?? params.res;
+    const isKoa = isKoaApp(this.options.app);
+    const req = isKoa ? params?.koaRequest : params?.req;
+    const res = isKoa ? params?.koaResponse : params?.res;
     if (!req || !res) {
       throw new Error("Missing request/response objects");
     }
@@ -36530,7 +36555,9 @@ var McpServerService = class {
       // sessionIdGenerator: () => undefined
     });
     transport.onclose = () => {
-      console.log(`SSE transport closed for session: ${transport.sessionId}`);
+      console.log(
+        `SSE transport closed for session: ${transport.sessionId}`
+      );
       this.cleanupSession(transport.sessionId);
     };
     transport.onerror = (error) => {
@@ -36565,7 +36592,10 @@ var McpServerService = class {
         ...image ? [
           {
             type: "image",
-            image: { data: image.data, mimeType: image.mimeType }
+            image: {
+              data: image.data,
+              mimeType: image.mimeType
+            }
           }
         ] : [],
         ...resource ? [
@@ -36580,7 +36610,10 @@ var McpServerService = class {
         ] : []
       ]
     };
-    console.log("Transformed to MCP:", JSON.stringify(mcpResponse, null, 2));
+    console.log(
+      "Transformed to MCP:",
+      JSON.stringify(mcpResponse, null, 2)
+    );
     return mcpResponse;
   }
 };
@@ -36608,50 +36641,46 @@ var allow_mcp_api_key_default = () => async (context, next) => {
   return next();
 };
 
-// src/mcp/app.ts
-function isKoaApplication(app) {
-  return typeof app.callback === "function" && Array.isArray(app.middleware);
-}
-
 // src/mcp-server/mcp-server.shared.ts
 var mcpServerPath = "mcp-server";
 var mcpServerMethods = ["create", "get"];
 
 // src/mcp-server/mcp-server.ts
-var mcpServer = (app) => {
-  const service = new McpServerService(getOptions(app));
-  const serviceOptions = {
-    methods: mcpServerMethods,
-    events: []
-  };
-  const a = isKoaApplication(app);
-  console.log("isKoaApplication", a);
-  if (a) {
-    Object.assign(serviceOptions, {
+function getTransportMiddleware(app) {
+  if (isKoaApp(app)) {
+    return {
       koa: {
         before: [
           async (ctx, next) => {
+            ctx.feathers || (ctx.feathers = {});
             ctx.feathers.koaRequest = ctx.req;
             ctx.feathers.koaResponse = ctx.res;
             await next();
           }
         ]
       }
-    });
-  } else {
-    Object.assign(serviceOptions, {
-      express: {
-        before: [
-          (req, res, next) => {
-            req.feathers.expressRequest = req;
-            req.feathers.expressResponse = res;
-            next();
-          }
-        ]
-      }
-    });
+    };
   }
-  ;
+  return {
+    express: {
+      before: [
+        (req, res, next) => {
+          req.feathers || (req.feathers = {});
+          req.feathers.expressRequest = req;
+          req.feathers.expressResponse = res;
+          next();
+        }
+      ]
+    }
+  };
+}
+var mcpServer = (app) => {
+  const service = new McpServerService(getOptions(app));
+  const serviceOptions = {
+    methods: mcpServerMethods,
+    events: [],
+    ...getTransportMiddleware(app)
+  };
   app.use(mcpServerPath, service, serviceOptions);
   app.service(mcpServerPath).hooks({
     around: {

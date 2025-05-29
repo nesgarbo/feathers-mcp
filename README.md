@@ -127,7 +127,7 @@ declare module '@feathersjs/feathers' {
   interface Params {
     ...
     koaRequest?: IncomingMessage
-    koaResponse: ServerResponse<IncomingMessage>
+    koaResponse?: ServerResponse<IncomingMessage>
   }
   ...
 }

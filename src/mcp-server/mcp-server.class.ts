@@ -11,12 +11,7 @@ export interface McpServiceOptions {
     app: McpApplication;
 }
 
-export interface McpParams extends Params {
-    // koaRequest?: KoaRequest;
-    // koaResponse?: KoaResponse;
-    // req?: ExpressRequest;
-    // res?: ExpressResponse;
-}
+export interface McpParams extends Params {}
 
 interface EmitOptions {
     progress?: number;
