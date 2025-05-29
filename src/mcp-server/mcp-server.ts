@@ -15,6 +15,7 @@ function getTransportMiddleware(app: McpApplication) {
         before: [
           async (ctx: any, next: any) => {
             ctx.feathers ||= {};
+            ctx.respond = false
             ctx.feathers.koaRequest = ctx.req;
             ctx.feathers.koaResponse = ctx.res;
             await next();
