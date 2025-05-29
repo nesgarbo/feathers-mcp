@@ -52,7 +52,7 @@
     "@feathersjs/koa": "^5.0.34",
     "@feathersjs/typebox": "^5.0.34",
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "@types/node": "^22.15.23",
+    "@types/node": "^22.15.24",
     "eslint": "^9.27.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
