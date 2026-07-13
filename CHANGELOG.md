@@ -3,27 +3,11 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Changed
-
-- Build moved from tsup to [tsdown](https://tsdown.dev). Faster, and it drops the
-  `rollup-plugin-dts` dependency that was the reason TypeScript had to stay on 5.x.
-- **`exports` map fixed.** It pointed `import` at `./dist/index.js`, which the new build does not
-  emit — and, more quietly, it carried a single top-level `types` field, so a CJS consumer under
-  NodeNext resolved the wrong declarations. Each condition now names its own declaration file. The
-  packed tarball is now actually `require()`d and `import()`ed as part of verification; a broken
-  `exports` map fails no build.
-
-### Notes
-
-- TypeScript is still pinned to 5.x, but the blocker has changed: build, typecheck and tests all
-  pass under TS 7 now, and the emitted declarations are equivalent. What breaks is
-  **typescript-eslint**, whose `typescript-estree` uses TS internals that TS 7 removed.
-
 ## [2.0.0]
 
 A correctness and security release. Several of the fixes below change behaviour, hence the major.
+
+Published versions jumped from 1.0.7 (the last release on npm) straight to 2.0.0.
 
 ### Security
 
@@ -120,19 +104,31 @@ A correctness and security release. Several of the fixes below change behaviour,
 - The full public surface is exported, including `McpToolMap`, which module augmentation of tool names
   needs in order to merge at all.
 
+### Build
+
+- Moved from tsup to [tsdown](https://tsdown.dev).
+- **The `exports` map was broken**, in two ways that no build step catches. It pointed `import` at
+  `./dist/index.js`, a file the build no longer emits; and it carried a single top-level `types`
+  field, so a CJS consumer under NodeNext resolved the wrong declarations. Each condition now names
+  its own declaration file, and verification packs the tarball and actually `require()`s and
+  `import()`s it.
+
 ### Internal
 
 - Peer dependencies are declared (`@feathersjs/*`, `@modelcontextprotocol/sdk`); `zod` is a real
-  dependency. Several imports previously resolved only through hoisting.
+  dependency. Several imports previously resolved only through hoisting. The SDK peer is `^1.29.0`,
+  the version this release is tested against.
 - `zod` is ranged `^3.25 || ^4.0`, matching the SDK's own peer range so hosts are not forced onto a
   zod major. The suite is green on both.
-- **TypeScript is pinned to 5.x.** TS 7's API breaks `rollup-plugin-dts` inside tsup:
-  `Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')`.
+- **TypeScript is pinned to 5.x.** Build, typecheck and tests all pass under TS 7 — the emitted
+  declarations are equivalent — but `typescript-eslint`'s `typescript-estree` reaches for TS
+  internals that TS 7 removed, so `lint` dies. Recheck when it ships TS 7 support.
 - The mocha/chai scaffolding (which `require`d a `lib/` that never existed) is replaced by 58 vitest
   tests, including integration tests that drive real Feathers Koa and Express apps with real MCP
   clients. `tsc --noEmit` now covers the test directory as well.
-- ESLint flat config; `node_modules/` and `dist/` are no longer committed.
+- ESLint flat config; `node_modules/` and `dist/` are no longer committed, and are purged from git
+  history (`.git` went from 21 MB to 344 KB).
 
-## [1.0.3] and earlier
+## 1.0.x
 
-See the git history.
+Released to npm up to 1.0.7. The git history only carries tags through 1.0.3.
