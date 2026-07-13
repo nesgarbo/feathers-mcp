@@ -1,7 +1,9 @@
 import { Type } from '@feathersjs/typebox'
-import { McpApplication } from './app.js'
-import { BaseTool } from './base-tool.js'
-import { McpToolMap } from './mcp-tool-types.js'
+import type { McpApplication } from './app.js'
+import type { BaseTool } from './base-tool.js'
+import type { McpToolMap } from './mcp-tool-types.js'
+import { debug } from './logger.js'
+import { typeboxToZodObject } from '../utils/typebox-to-zod-object.js'
 
 export class McpToolHandler {
   app: McpApplication
@@ -13,7 +15,27 @@ export class McpToolHandler {
   }
 
   register(tool: BaseTool<any, any, any>) {
-    console.log('Registering tool:', tool.name)
+    // Silently overwriting would leave the shadowed tool registered-but-unreachable, and the only
+    // symptom would be an MCP client calling one tool and getting another's behaviour.
+    if (this.tools.has(tool.name as keyof McpToolMap)) {
+      throw new Error(`feathers-mcp: a tool named '${tool.name}' is already registered`)
+    }
+
+    // Convert now, at boot, so a malformed schema fails here with the tool's name on it rather than
+    // as a 500 on the first client's `initialize`, which is where it used to surface.
+    if (tool.expose?.mcp !== false) {
+      try {
+        typeboxToZodObject(tool.inputSchema)
+      } catch (error) {
+        throw new Error(
+          `feathers-mcp: tool '${tool.name}' has an unusable input schema — ` +
+            (error instanceof Error ? error.message : String(error)),
+          { cause: error }
+        )
+      }
+    }
+
+    debug('registering tool:', tool.name)
     this.tools.set(tool.name as keyof McpToolMap, tool)
   }
 
@@ -33,13 +55,17 @@ export class McpToolHandler {
     return this.getAll().filter((t) => t.expose?.openai !== false)
   }
 
+  /**
+   * Schemas for host apps doing OpenAI-style function calling. These filter on `expose.openai` —
+   * they previously filtered on `expose.mcp`, which made `expose.openai` do nothing at all and
+   * meant an MCP-only tool showed up in the OpenAI schema (and vice versa).
+   */
   getToolcallSchema() {
-    const entries = this.getForMcp().map((tool) =>
+    const entries = this.getForOpenAi().map((tool) =>
       Type.Object({
         id: Type.Number(),
         name: Type.Literal(tool.name),
-        parameters: tool.inputSchema,
-        // outputSchema: tool.outputSchema
+        parameters: tool.inputSchema
       })
     )
 
@@ -47,17 +73,15 @@ export class McpToolHandler {
   }
 
   buildToolsSchema() {
-    const schemas = this.getForMcp().map((tool) =>
+    const schemas = this.getForOpenAi().map((tool) =>
       Type.Object({
         name: Type.Literal(tool.name),
         description: Type.String(),
         parameters: tool.inputSchema,
-        outputSchema: tool.outputSchema,
+        outputSchema: tool.outputSchema
       })
     )
-  
+
     return Type.Array(Type.Union(schemas), { $id: 'Tools' })
   }
-
-  
 }

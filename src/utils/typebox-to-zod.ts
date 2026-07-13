@@ -1,256 +1,186 @@
-import { TSchema } from '@sinclair/typebox'
+import type { TSchema } from '@sinclair/typebox'
 import { z } from 'zod'
+import { warn } from '../mcp/logger.js'
 
 /**
- * Converts a TypeBox schema to a Zod schema
- * Preserves descriptions, validations, and other metadata
- * @param typeboxSchema The TypeBox schema to convert
- * @returns Equivalent Zod schema
+ * Converts a TypeBox schema to a Zod schema, because the MCP SDK only accepts Zod
+ * (`AnySchema = ZodTypeAny | $ZodType` — raw JSON Schema is not an option) while Feathers apps
+ * describe everything in TypeBox.
+ *
+ * Order matters here. TypeBox emits `Type.Literal('a')` as `{ const: 'a', type: 'string' }` — it
+ * carries a `type` — so dispatching on `type` first silently turns every literal, literal union and
+ * enum into a bare `z.string()`: no validation, and the allowed values never even reach the model in
+ * the advertised tool schema. `const`/`enum`/combinators are therefore checked before `type`.
  */
 export const typeboxToZod = (typeboxSchema: TSchema): z.ZodTypeAny => {
+  const schema = typeboxSchema as any
+
   /**
-   * Applies metadata from TypeBox schema to Zod schema
-   * Preserves descriptions, titles, examples, and default values
+   * Only `description` and `default` survive the trip — they are what actually reaches the model
+   * through the MCP tool schema.
    */
-  const applyMetadata = <T extends z.ZodTypeAny>(zodSchema: T, schema: TSchema): T => {
+  const applyMetadata = <T extends z.ZodTypeAny>(zodSchema: T): T => {
     let result = zodSchema
 
-    // Apply description
-    if ('description' in schema && schema.description) {
+    if (schema.description) {
       result = result.describe(schema.description as string) as T
     }
-
-    // Add title as custom metadata
-    if ('title' in schema && schema.title) {
-      // @ts-ignore - Add title as custom metadata
-      result._def.meta = result._def.meta || {}
-      // @ts-ignore
-      result._def.meta.title = schema.title
-    }
-
-    // Add examples as custom metadata
-    if ('examples' in schema && schema.examples) {
-      // @ts-ignore - Add examples as custom metadata
-      result._def.meta = result._def.meta || {}
-      // @ts-ignore
-      result._def.meta.examples = schema.examples
-    } else if ('example' in schema && schema.example) {
-      // @ts-ignore
-      result._def.meta = result._def.meta || {}
-      // @ts-ignore
-      result._def.meta.examples = [schema.example]
-    }
-
-    // Apply default value
-    if ('default' in schema && schema.default !== undefined) {
+    if (schema.default !== undefined) {
       result = result.default(schema.default) as unknown as T
     }
 
     return result
   }
 
-  // Check schema type
-  if ('type' in typeboxSchema) {
-    switch (typeboxSchema.type) {
-      case 'string': {
-        let stringSchema = z.string()
-        if (typeboxSchema.format === 'email') {
-          stringSchema = stringSchema.email()
-        } else if (typeboxSchema.format === 'uri') {
-          stringSchema = stringSchema.url()
-        } else if (typeboxSchema.format === 'date-time') {
-          stringSchema = stringSchema.datetime()
-        }
+  // --- literals and enums, before the `type` switch can swallow them ---
 
-        if (typeboxSchema.minLength !== undefined) {
-          stringSchema = stringSchema.min(typeboxSchema.minLength)
-        }
-        if (typeboxSchema.maxLength !== undefined) {
-          stringSchema = stringSchema.max(typeboxSchema.maxLength)
-        }
-        if (typeboxSchema.pattern !== undefined) {
-          stringSchema = stringSchema.regex(new RegExp(typeboxSchema.pattern))
-        }
+  if ('const' in schema) {
+    return applyMetadata(z.literal(schema.const))
+  }
 
-        return applyMetadata(stringSchema, typeboxSchema)
-      }
-
-      case 'number': {
-        let numberSchema = z.number()
-        if (typeboxSchema.minimum !== undefined) {
-          numberSchema = numberSchema.min(typeboxSchema.minimum)
-        }
-        if (typeboxSchema.maximum !== undefined) {
-          numberSchema = numberSchema.max(typeboxSchema.maximum)
-        }
-        if (typeboxSchema.multipleOf !== undefined) {
-          numberSchema = numberSchema.multipleOf(typeboxSchema.multipleOf)
-        }
-
-        return applyMetadata(numberSchema, typeboxSchema)
-      }
-
-      case 'integer': {
-        let intSchema = z.number().int()
-        if (typeboxSchema.minimum !== undefined) {
-          intSchema = intSchema.min(typeboxSchema.minimum)
-        }
-        if (typeboxSchema.maximum !== undefined) {
-          intSchema = intSchema.max(typeboxSchema.maximum)
-        }
-
-        return applyMetadata(intSchema, typeboxSchema)
-      }
-
-      case 'boolean': {
-        return applyMetadata(z.boolean(), typeboxSchema)
-      }
-
-      case 'null': {
-        return applyMetadata(z.null(), typeboxSchema)
-      }
-
-      case 'object': {
-        if (typeboxSchema.properties) {
-          const shape: Record<string, z.ZodTypeAny> = {}
-          const required = typeboxSchema.required || []
-
-          for (const [key, propSchema] of Object.entries(typeboxSchema.properties)) {
-            const zodProp = typeboxToZod(propSchema as TSchema)
-            shape[key] = required.includes(key) ? zodProp : zodProp.optional()
-          }
-
-          // Create the base object schema
-          const baseObjectSchema = z.object(shape)
-
-          // Apply additional constraints
-          let finalObjectSchema: z.ZodType
-          if (typeboxSchema.additionalProperties === false) {
-            finalObjectSchema = baseObjectSchema.strict()
-          } else {
-            finalObjectSchema = baseObjectSchema
-          }
-
-          // Apply metadata and return
-          return applyMetadata(finalObjectSchema, typeboxSchema)
-        }
-        return applyMetadata(z.object({}), typeboxSchema)
-      }
-
-      case 'array': {
-        if (typeboxSchema.items) {
-          // Create base array schema
-          const baseArraySchema = z.array(typeboxToZod(typeboxSchema.items as TSchema))
-
-          // Apply constraints
-          let finalArraySchema: z.ZodType = baseArraySchema
-
-          if (typeboxSchema.minItems !== undefined) {
-            finalArraySchema = baseArraySchema.min(typeboxSchema.minItems)
-          }
-
-          if (typeboxSchema.maxItems !== undefined) {
-            if (finalArraySchema instanceof z.ZodArray) {
-              finalArraySchema = finalArraySchema.max(typeboxSchema.maxItems)
-            }
-          }
-
-          // Handle uniqueItems constraint
-          if (typeboxSchema.uniqueItems === true) {
-            // For uniqueItems, we need to use refine
-            // We need to recreate the schema to avoid the typing issues
-            finalArraySchema = baseArraySchema.refine((items) => new Set(items).size === items.length, {
-              message: 'Array items must be unique'
-            })
-          }
-
-          // Apply metadata and return
-          return applyMetadata(finalArraySchema, typeboxSchema)
-        }
-        return applyMetadata(z.array(z.unknown()), typeboxSchema)
-      }
-
-      default:
-        return z.any()
-    }
-  } else if ('enum' in typeboxSchema && Array.isArray(typeboxSchema.enum)) {
-    // Handle enumerations
-    // Make sure we have at least one enum value for typing
-    if (typeboxSchema.enum.length === 0) {
-      return z.never()
-    }
-
-    const enumValues = typeboxSchema.enum as [string, ...string[]]
-    const enumSchema = z.enum(enumValues)
-    return applyMetadata(enumSchema, typeboxSchema)
-  } else if ('const' in typeboxSchema) {
-    // Handle constant values
-    const literalSchema = z.literal(typeboxSchema.const)
-    return applyMetadata(literalSchema, typeboxSchema)
-  } else if (typeboxSchema.anyOf || typeboxSchema.oneOf) {
-    // Handle unions
-    const unionTypes = (typeboxSchema.anyOf || typeboxSchema.oneOf || []).map((schema: TSchema) =>
-      typeboxToZod(schema)
+  if (Array.isArray(schema.enum)) {
+    if (schema.enum.length === 0) return z.never()
+    const allStrings = schema.enum.every((v: unknown) => typeof v === 'string')
+    return applyMetadata(
+      allStrings
+        ? (z.enum(schema.enum as [string, ...string[]]) as unknown as z.ZodTypeAny)
+        : unionOf(schema.enum.map((v: unknown) => z.literal(v as any)))
     )
+  }
 
-    // Make sure we have at least one type for the union
-    if (unionTypes.length === 0) {
-      return z.never()
+  // --- combinators ---
+
+  const anyOf = schema.anyOf ?? schema.oneOf
+  if (Array.isArray(anyOf)) {
+    if (anyOf.length === 0) return z.never()
+    return applyMetadata(unionOf(anyOf.map((s: TSchema) => typeboxToZod(s))))
+  }
+
+  if (Array.isArray(schema.allOf)) {
+    if (schema.allOf.length === 0) return z.any()
+
+    let merged = typeboxToZod(schema.allOf[0] as TSchema)
+    for (const part of schema.allOf.slice(1)) {
+      const next = typeboxToZod(part as TSchema)
+      merged =
+        merged instanceof z.ZodObject && next instanceof z.ZodObject
+          ? merged.extend(next.shape)
+          : z.intersection(merged, next)
     }
+    return applyMetadata(merged)
+  }
 
-    const unionSchema = z.union(unionTypes)
-    return applyMetadata(unionSchema, typeboxSchema)
-  } else if (typeboxSchema.allOf) {
-    // Handle intersections (allOf)
-    if (typeboxSchema.allOf.length === 0) {
-      return z.any()
-    }
-
-    let baseSchema = typeboxToZod(typeboxSchema.allOf[0] as TSchema)
-
-    for (let i = 1; i < typeboxSchema.allOf.length; i++) {
-      const schema = typeboxToZod(typeboxSchema.allOf[i] as TSchema)
-
-      // For object schemas, we can merge them
-      if (baseSchema instanceof z.ZodObject && schema instanceof z.ZodObject) {
-        baseSchema = baseSchema.merge(schema)
-      }
-      // For other types, we can use intersection (less common)
-      else {
-        baseSchema = z.intersection(baseSchema, schema)
-      }
-    }
-
-    return applyMetadata(baseSchema, typeboxSchema)
-  } else if ('$ref' in typeboxSchema) {
-    // References are more complex and would require a registry
-    console.warn('$ref handling is not implemented in this converter. Using any() type.')
+  if ('$ref' in schema) {
+    // Resolving these needs a schema registry the converter does not have. Left as `any`, but said
+    // out loud — a silent `any` on a tool input means the model can send anything at all.
+    warn(
+      `tool schema uses $ref ('${schema.$ref}'), which this converter cannot resolve; ` +
+        'that field will accept any value. Inline the schema instead of using Type.Ref.'
+    )
     return z.any()
   }
 
-  return z.any()
+  // --- primitives and containers ---
+
+  switch (schema.type) {
+    case 'string': {
+      let stringSchema = z.string()
+      if (schema.format === 'email') stringSchema = stringSchema.email()
+      else if (schema.format === 'uri' || schema.format === 'url') stringSchema = stringSchema.url()
+      else if (schema.format === 'uuid') stringSchema = stringSchema.uuid()
+      else if (schema.format === 'date-time') stringSchema = stringSchema.datetime()
+
+      if (schema.minLength !== undefined) stringSchema = stringSchema.min(schema.minLength)
+      if (schema.maxLength !== undefined) stringSchema = stringSchema.max(schema.maxLength)
+      if (schema.pattern !== undefined) stringSchema = stringSchema.regex(new RegExp(schema.pattern))
+
+      return applyMetadata(stringSchema)
+    }
+
+    case 'number':
+    case 'integer': {
+      let numberSchema = schema.type === 'integer' ? z.number().int() : z.number()
+      if (schema.minimum !== undefined) numberSchema = numberSchema.min(schema.minimum)
+      if (schema.maximum !== undefined) numberSchema = numberSchema.max(schema.maximum)
+      if (schema.exclusiveMinimum !== undefined) numberSchema = numberSchema.gt(schema.exclusiveMinimum)
+      if (schema.exclusiveMaximum !== undefined) numberSchema = numberSchema.lt(schema.exclusiveMaximum)
+      if (schema.multipleOf !== undefined) numberSchema = numberSchema.multipleOf(schema.multipleOf)
+
+      return applyMetadata(numberSchema)
+    }
+
+    case 'boolean':
+      return applyMetadata(z.boolean())
+
+    case 'null':
+      return applyMetadata(z.null())
+
+    case 'object':
+      return applyMetadata(objectToZod(schema))
+
+    case 'array':
+      return applyMetadata(arrayToZod(schema))
+
+    default:
+      // Type.Any / Type.Unknown have no `type` at all and land here.
+      return applyMetadata(z.any())
+  }
 }
 
+const unionOf = (options: z.ZodTypeAny[]): z.ZodTypeAny =>
+  options.length === 1 ? options[0] : z.union(options as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]])
+
 /**
- * Example usage:
- *
- * import { Type } from '@sinclair/typebox';
- *
- * const UserTypeBox = Type.Object({
- *   name: Type.String({
- *     description: 'The user\'s full name'
- *   }),
- *   age: Type.Number({
- *     description: 'The user\'s age in years',
- *     minimum: 0
- *   }),
- *   email: Type.Optional(Type.String({
- *     format: 'email',
- *     description: 'The user\'s email address'
- *   }))
- * }, {
- *   description: 'User information schema'
- * });
- *
- * const UserZod = typeboxToZod(UserTypeBox);
+ * `z.object({})` strips every unknown key, so an object schema with no `properties` — which is how
+ * TypeBox emits `Type.Record` and `Type.Date` — used to hand the tool handler an empty object with
+ * no error and no warning. Records become records; a Date becomes a coerced date, since a model can
+ * only ever send one as a string.
  */
+const objectToZod = (schema: any): z.ZodTypeAny => {
+  if (schema.properties) {
+    const required: string[] = schema.required ?? []
+    const shape: Record<string, z.ZodTypeAny> = {}
+
+    for (const [key, propSchema] of Object.entries(schema.properties)) {
+      const zodProp = typeboxToZod(propSchema as TSchema)
+      shape[key] = required.includes(key) ? zodProp : zodProp.optional()
+    }
+
+    const objectSchema = z.object(shape)
+    return schema.additionalProperties === false ? objectSchema.strict() : objectSchema
+  }
+
+  if (schema.instanceOf === 'Date') {
+    return z.coerce.date()
+  }
+
+  // Type.Record: the value schema hides in patternProperties, or in additionalProperties.
+  const patternValue = schema.patternProperties
+    ? (Object.values(schema.patternProperties)[0] as TSchema | undefined)
+    : undefined
+  const valueSchema =
+    patternValue ??
+    (typeof schema.additionalProperties === 'object' ? (schema.additionalProperties as TSchema) : undefined)
+
+  return z.record(z.string(), valueSchema ? typeboxToZod(valueSchema) : z.unknown())
+}
+
+/** An `items` that is an array means a tuple; treating it as a plain array erased the positions. */
+const arrayToZod = (schema: any): z.ZodTypeAny => {
+  if (Array.isArray(schema.items)) {
+    return z.tuple(schema.items.map((s: TSchema) => typeboxToZod(s)) as [z.ZodTypeAny, ...z.ZodTypeAny[]])
+  }
+
+  let arraySchema = z.array(schema.items ? typeboxToZod(schema.items as TSchema) : z.unknown())
+
+  if (schema.minItems !== undefined) arraySchema = arraySchema.min(schema.minItems)
+  if (schema.maxItems !== undefined) arraySchema = arraySchema.max(schema.maxItems)
+
+  // `refine` returns a wrapper, so it must come last — applying it to the base schema would throw
+  // away the min/max constraints set above.
+  return schema.uniqueItems === true
+    ? arraySchema.refine((items) => new Set(items).size === items.length, {
+        message: 'Array items must be unique'
+      })
+    : arraySchema
+}
