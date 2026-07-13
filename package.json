@@ -1,7 +1,7 @@
 {
   "name": "feathers-mcp",
   "description": "MCP implementation for FeathersJS",
-  "version": "1.0.3",
+  "version": "2.0.0",
   "type": "module",
   "homepage": "https://github.com/nesgarbo/feathers-mcp",
   "main": "dist/index.js",
@@ -37,25 +37,53 @@
     "url": "https://github.com/nesgarbo/feathers-mcp/issues"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vitest watch",
-    "build": "tsup src/index.ts --dts --format esm,cjs --out-dir dist",
+    "build": "tsup src/index.ts --dts --format esm,cjs --target es2022 --out-dir dist",
     "test": "vitest run",
-    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "prepare": "npm run build"
   },
+  "dependencies": {
+    "zod": "^3.25 || ^4.0"
+  },
+  "peerDependencies": {
+    "@feathersjs/authentication": "^5.0.0",
+    "@feathersjs/errors": "^5.0.0",
+    "@feathersjs/express": "^5.0.0",
+    "@feathersjs/feathers": "^5.0.0",
+    "@feathersjs/koa": "^5.0.0",
+    "@feathersjs/typebox": "^5.0.0",
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "peerDependenciesMeta": {
+    "@feathersjs/express": {
+      "optional": true
+    },
+    "@feathersjs/koa": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@feathersjs/express": "^5.0.34",
-    "@feathersjs/feathers": "^5.0.34",
-    "@feathersjs/koa": "^5.0.34",
-    "@feathersjs/typebox": "^5.0.34",
-    "@modelcontextprotocol/sdk": "^1.12.0",
-    "@types/node": "^22.15.24",
-    "eslint": "^9.27.0",
-    "tsup": "^8.5.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "@eslint/js": "^10.0.1",
+    "@feathersjs/authentication": "^5.0.46",
+    "@feathersjs/errors": "^5.0.46",
+    "@feathersjs/express": "^5.0.46",
+    "@feathersjs/feathers": "^5.0.46",
+    "@feathersjs/koa": "^5.0.46",
+    "@feathersjs/typebox": "^5.0.46",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
   }
 }
