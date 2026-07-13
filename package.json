@@ -4,11 +4,21 @@
   "version": "2.0.0",
   "type": "module",
   "homepage": "https://github.com/nesgarbo/feathers-mcp",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
   "exports": {
-    "import": "./dist/index.js",
-    "require": "./dist/index.cjs"
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "keywords": [
     "feathers",
@@ -44,7 +54,7 @@
   ],
   "scripts": {
     "dev": "vitest watch",
-    "build": "tsup src/index.ts --dts --format esm,cjs --target es2022 --out-dir dist",
+    "build": "tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -81,7 +91,7 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^26.1.1",
     "eslint": "^10.7.0",
-    "tsup": "^8.5.1",
+    "tsdown": "^0.22.7",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.63.0",
     "vitest": "^4.1.10"

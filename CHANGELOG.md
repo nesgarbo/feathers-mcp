@@ -3,6 +3,24 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Build moved from tsup to [tsdown](https://tsdown.dev). Faster, and it drops the
+  `rollup-plugin-dts` dependency that was the reason TypeScript had to stay on 5.x.
+- **`exports` map fixed.** It pointed `import` at `./dist/index.js`, which the new build does not
+  emit — and, more quietly, it carried a single top-level `types` field, so a CJS consumer under
+  NodeNext resolved the wrong declarations. Each condition now names its own declaration file. The
+  packed tarball is now actually `require()`d and `import()`ed as part of verification; a broken
+  `exports` map fails no build.
+
+### Notes
+
+- TypeScript is still pinned to 5.x, but the blocker has changed: build, typecheck and tests all
+  pass under TS 7 now, and the emitted declarations are equivalent. What breaks is
+  **typescript-eslint**, whose `typescript-estree` uses TS internals that TS 7 removed.
+
 ## [2.0.0]
 
 A correctness and security release. Several of the fixes below change behaviour, hence the major.
