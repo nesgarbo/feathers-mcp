@@ -119,21 +119,16 @@ Add the authStrategy in default.json & production.json
 }
 ```
 
-And koaRequest and koaResponse in the declarations.ts
-```ts
-import { IncomingMessage, ServerResponse } from 'http'
-...
-declare module '@feathersjs/feathers' {
-  interface Params {
-    ...
-    koaRequest?: IncomingMessage
-    koaResponse?: ServerResponse<IncomingMessage>
-  }
-  ...
-}
-```
+The MCP transport writes to the raw Node socket, so `feathers-mcp` passes it through Feathers params.
+You no longer need to declare `koaRequest`/`koaResponse` yourself — the library augments `Params`.
 
-It is not tested in express but it is supposed to be req and res instead
+Both Koa and Express are covered by the integration tests.
+
+If you use a dedicated header rather than `Authorization`, it carries the key bare:
+
+```json
+"mcpApiKey": { "header": "x-api-key" }
+```
 
 4. **Example Tool**
 
@@ -142,7 +137,7 @@ Create your tools by extending BaseTool and defining input/output schemas:
 ```ts
 import { Static, Type } from "@feathersjs/typebox";
 import { McpParams, BaseTool, ToolResponse } from "feathers-mcp";
-import type { InferMcpToolType } from "feathers-mcp";
+import type { EmitFunction, InferMcpToolType } from "feathers-mcp";
 
 export const REPEAT_TEXT_TOOL_NAME = "repeat_text" as const;
 
@@ -153,6 +148,7 @@ export class RepeatTextTool extends BaseTool<
 > {
   name = REPEAT_TEXT_TOOL_NAME;
   description = "Repite un texto N veces";
+  // The input schema must be a Type.Object — MCP tool inputs are always objects.
   static inputSchema = Type.Object({
     text: Type.String({ description: "Texto a repetir" }),
     times: Type.Number({ description: "Número de repeticiones" }),
@@ -163,15 +159,15 @@ export class RepeatTextTool extends BaseTool<
   expose = { mcp: true, openai: true };
 
   async handler(
-    { text, times }: { text: string; times: number },
-    _ctx: McpParams,
-    emit: (message: string, progress?: number) => void
+    { text, times }: Static<typeof RepeatTextTool.inputSchema>,
+    // The authenticated Feathers params of the caller, including `params.user`.
+    params: McpParams,
+    emit: EmitFunction
   ) {
     emit("Starting text repetition...", 0);
     const result = text.repeat(times);
-    emit("Text repetition in progress...", 50);
     emit("Text repetition completed!", 100);
-    return { text: { type: "text", data: text.repeat(times) } } as ToolResponse<
+    return { text: { type: "text", data: result } } as ToolResponse<
       Static<typeof RepeatTextTool.outputSchema>
     >;
   }
@@ -184,7 +180,56 @@ declare module "feathers-mcp" {
 }
 ```
 
-You should also augment the MCP tool types by declaring your tool
+You should also augment the MCP tool types by declaring your tool.
+
+`emit` sends notifications to the client while the call is still running. A bare number is progress;
+pass an object for anything else:
+
+```ts
+emit("Halfway", 50);                                  // progress notification
+emit("Halfway", { progress: 50, total: 200 });        // progress out of a custom total
+emit("Fetching rows", { type: "log", level: "info" }); // log notification
+```
+
+## Return values
+
+A tool returns any combination of `text`, `json`, `image` and `resource`. Binary payloads are **raw
+base64** — no `data:` URI prefix:
+
+```ts
+return { image: { type: "image", data: base64, mimeType: "image/png" } };
+return { json: { type: "json", result: { rows } } };
+```
+
+## Options
+
+```ts
+app.configure(
+  feathersMcp({
+    tools: [RepeatTextTool],
+    serverInfo: { name: "my-app", version: "2.0.0" }, // advertised on initialize
+    sessionTtlMs: 30 * 60 * 1000, // idle session timeout; 0 disables
+    maxSessions: 1000, // concurrent session ceiling; 0 disables
+  })
+);
+```
+
+## Debugging
+
+Session and tool tracing is off by default. Turn it on with:
+
+```bash
+DEBUG=feathers-mcp node app.js
+```
+
+## Notes
+
+- Each MCP session gets its own `McpServer` and is bound to the user that opened it; another user
+  presenting the same session id is rejected with 403.
+- Sessions are held in process memory, so running more than one instance requires sticky sessions.
+- Tool input schemas must be a `Type.Object`, and two tools may not share a name — both fail at boot.
+
+Upgrading from 1.x? See [CHANGELOG.md](CHANGELOG.md) — 2.0.0 carries breaking changes.
 
 ---
 
