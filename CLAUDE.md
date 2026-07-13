@@ -10,18 +10,22 @@ There is no runnable app here. The end-to-end surface is exercised by [test/test
 
 ## Commands
 
+**bun**, not npm — the lockfile is `bun.lock`.
+
 ```bash
-npm run build       # tsup -> dist/ (ESM + CJS + .d.ts). Also runs on `npm prepare`.
-npm test            # vitest run
-npm run dev         # vitest watch
-npm run typecheck   # tsc --noEmit
-npm run lint        # eslint . (flat config)
+bun run build       # tsdown -> dist/ (ESM + CJS + .d.mts/.d.cts). Also runs on `prepare`.
+bun run test        # vitest run
+bun run dev         # vitest watch
+bun run typecheck   # tsc --noEmit (covers src, test and the config files)
+bun run lint        # eslint . (flat config)
 ```
 
-Single test: `npx vitest run test/units.test.ts` or `npx vitest run -t "<test name>"`.
-Trace MCP sessions: `DEBUG=feathers-mcp npm test`.
+Single test: `bunx vitest run test/units.test.ts` or `bunx vitest run -t "<test name>"`.
+Trace MCP sessions: `DEBUG=feathers-mcp bun run test`.
 
-**Do not upgrade TypeScript past 5.x.** TS 7 is the native rewrite and its API surface breaks `rollup-plugin-dts` inside tsup — `npm run build` dies with `Cannot read properties of undefined (reading 'useCaseSensitiveFileNames')`. `ncu -u` will happily bump it; don't let it.
+**Do not upgrade TypeScript past 5.x**, and don't let `ncu -u` do it either. The reason has moved: it used to be that TS 7's API broke `rollup-plugin-dts` inside tsup, which tsdown does not use — build, typecheck and tests all pass on TS 7, and the emitted `.d.ts` is equivalent. The blocker now is **typescript-eslint**, whose `typescript-estree` reaches for TS internals that TS 7 removed (`Cannot read properties of undefined (reading 'Cjs')`), so `lint` dies. Recheck when typescript-eslint ships TS 7 support.
+
+The build emits `index.mjs`/`index.cjs` with matching `.d.mts`/`.d.cts`. `package.json` `exports` must keep a `types` condition **inside each of `import` and `require`** — a single top-level `types` leaves CJS consumers under NodeNext resolving the wrong declarations. If you change the build output names, `bun pm pack` and actually `require()`/`import()` the tarball; a broken `exports` map does not fail any build.
 
 ## Architecture
 
