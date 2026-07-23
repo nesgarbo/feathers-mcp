@@ -62,7 +62,7 @@
     "prepare": "npm run build"
   },
   "dependencies": {
-    "zod": "^3.25 || ^4.0"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@feathersjs/authentication": "^5.0.0",
@@ -92,9 +92,9 @@
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^26.1.1",
     "eslint": "^10.7.0",
-    "tsdown": "^0.22.7",
+    "tsdown": "^0.22.13",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.63.0",
+    "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
   }
 }
