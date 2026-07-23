@@ -2,7 +2,9 @@ import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist/**'] },
+  // website/ is an independent Astro subproject with its own toolchain and build output — not
+  // part of the library this config lints.
+  { ignores: ['dist/**', 'website/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

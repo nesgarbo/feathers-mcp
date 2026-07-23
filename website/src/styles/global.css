@@ -1,0 +1,254 @@
+@import "@fontsource-variable/fraunces/standard.css";
+
+:root {
+  --bg: #14121c;
+  --bg-raised: #1a1726;
+  --bg-card: #201b2e;
+  --ink: #f5f3fa;
+  --ink-dim: #b7afd1;
+  --ink-faint: #8981a8;
+  --rule: #332e48;
+  --rule-soft: #262138;
+
+  --teal: #2e97aa;
+  --teal-light: #3fb4c9;
+  --teal-deep: #155264;
+  --violet: #6b4fe0;
+  --violet-light: #9179ff;
+  --violet-deep: #4527a6;
+  --gold: #f3ce6e;
+
+  --display: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --sans: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+
+  --container: 1080px;
+  color-scheme: dark;
+}
+
+/*
+ * Real light theme — same hues, deepened/lightened per surface rather than the dark
+ * values left as-is (a `#9179ff` violet or `#f3ce6e` gold reads fine on near-black but
+ * fails contrast as text on paper). Applies via the same `data-theme` attribute and
+ * `prefers-color-scheme` Starlight's own theme picker uses (see Header.astro), so a
+ * choice made on a docs page carries over to this landing page and back.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f5f3fa;
+    --bg-raised: #ece7f7;
+    --bg-card: #e3dcf2;
+    --ink: #1e1b29;
+    --ink-dim: #4a4460;
+    --ink-faint: #6b638a;
+    --rule: #d8d0ec;
+    --rule-soft: #e3dcf2;
+
+    --teal: #0f6e82;
+    --teal-light: #12839a;
+    --teal-deep: #073c46;
+    --violet: #4527a6;
+    --violet-light: #5b3fc4;
+    --violet-deep: #2e1a70;
+    --gold: #8a5a0e;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f3fa;
+  --bg-raised: #ece7f7;
+  --bg-card: #e3dcf2;
+  --ink: #1e1b29;
+  --ink-dim: #4a4460;
+  --ink-faint: #6b638a;
+  --rule: #d8d0ec;
+  --rule-soft: #e3dcf2;
+
+  --teal: #0f6e82;
+  --teal-light: #12839a;
+  --teal-deep: #073c46;
+  --violet: #4527a6;
+  --violet-light: #5b3fc4;
+  --violet-deep: #2e1a70;
+  --gold: #8a5a0e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.wrap {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--violet-light);
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 22px;
+  height: 1px;
+  background: var(--violet-light);
+  display: inline-block;
+}
+
+h1, h2, h3 {
+  font-family: var(--display);
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  margin: 0;
+  color: var(--ink);
+}
+
+h1 { font-size: clamp(2.6rem, 5.5vw, 4.6rem); line-height: 1.04; font-weight: 600; }
+h2 { font-size: clamp(1.7rem, 3vw, 2.4rem); line-height: 1.15; }
+h3 { font-size: 1.25rem; line-height: 1.3; }
+
+p { margin: 0; }
+
+.lede {
+  color: var(--ink-dim);
+  font-size: 1.15rem;
+  line-height: 1.6;
+  max-width: 54ch;
+}
+
+a {
+  color: var(--teal-light);
+  text-decoration-color: color-mix(in srgb, var(--teal-light) 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+a:hover { text-decoration-color: currentColor; }
+
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+
+code, pre, kbd {
+  font-family: var(--mono);
+}
+
+code.inline {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  padding: 0.1em 0.45em;
+  font-size: 0.88em;
+  color: var(--gold);
+}
+
+section {
+  padding: 88px 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+section:first-of-type,
+section.no-rule {
+  border-top: none;
+}
+
+.section-head {
+  max-width: 62ch;
+  margin-bottom: 44px;
+}
+
+.section-head h2 {
+  margin-top: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 12px 20px;
+  border-radius: 8px;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.btn:hover { transform: translateY(-1px); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--violet-light), var(--violet-deep));
+  color: #f8f6ff;
+}
+
+.btn-primary:hover { border-color: color-mix(in srgb, var(--violet-light) 60%, transparent); }
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--rule);
+  color: var(--ink);
+}
+
+.btn-ghost:hover { border-color: var(--ink-faint); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--rule);
+  color: var(--ink-dim);
+  background: var(--bg-raised);
+}
+
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--gold) 35%, transparent);
+  color: var(--ink);
+}

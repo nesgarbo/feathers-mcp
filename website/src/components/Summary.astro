@@ -1,0 +1,59 @@
+---
+---
+
+<section class="summary">
+  <div class="wrap summary-grid">
+    <p class="lede">
+      MCP's transport writes to the raw Node socket, so most of the design is about getting
+      the raw request down to it and keeping Koa or Express from writing over it afterwards —
+      then handing each session its own isolated server, bound to the user who opened it.
+    </p>
+    <div class="stat-row">
+      <div class="stat"><strong>2</strong><span>transports: Koa &amp; Express</span></div>
+      <div class="stat"><strong>1:1</strong><span>session ↔ McpServer, never shared</span></div>
+      <div class="stat"><strong>TypeBox</strong><span>schemas, converted to Zod at the SDK boundary</span></div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .summary {
+    padding: 48px 0 8px;
+  }
+
+  .summary-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 32px;
+  }
+
+  .lede { max-width: 46ch; }
+
+  .stat-row {
+    display: flex;
+    gap: 30px;
+  }
+
+  .stat strong {
+    display: block;
+    font-family: var(--display);
+    font-size: 1.9rem;
+    color: var(--gold);
+    line-height: 1;
+  }
+
+  .stat span {
+    display: block;
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 780px) {
+    .summary-grid { flex-direction: column; align-items: flex-start; }
+  }
+</style>

@@ -1,0 +1,140 @@
+@import "@fontsource-variable/fraunces/standard.css";
+
+/*
+ * feathers-mcp docs theme — same palette family as the landing page
+ * (src/styles/global.css: teal/violet/gold on a violet-tinted neutral), mapped onto
+ * Starlight's CSS custom properties, with a real, separately-tuned light mode — not a
+ * naive inversion. Accent hexes differ between themes on purpose: a hue that's legible
+ * as an accent on a near-black background is usually too light to pass as body/link
+ * text on a paper-colored one, so each theme gets its own deepened/lightened variant of
+ * the same hue rather than sharing one hardcoded value.
+ */
+
+/* Dark (default) */
+:root {
+  color-scheme: dark;
+
+  --sl-color-white: #f5f3fa;
+  --sl-color-gray-1: #ece7f7;
+  --sl-color-gray-2: #cdc4e6;
+  --sl-color-gray-3: #b7afd1;
+  --sl-color-gray-4: #8981a8;
+  --sl-color-gray-5: #443c60;
+  --sl-color-gray-6: #211c30;
+  --sl-color-gray-7: #1a1726;
+  --sl-color-black: #100e17;
+
+  --sl-color-bg: #14121c;
+  --sl-color-bg-nav: #1a1726;
+  --sl-color-bg-sidebar: #1a1726;
+  --sl-color-bg-inline-code: #201b2e;
+  --sl-color-bg-accent: #f3ce6e;
+
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: #9179ff;
+  --sl-color-text-invert: #14121c;
+
+  --sl-color-hairline-light: #332e48;
+  --sl-color-hairline: #262138;
+  --sl-color-hairline-shade: #100e17;
+  --sl-color-backdrop-overlay: hsla(258, 30%, 8%, 0.72);
+
+  /* accent = protocol-violet (primary brand color) */
+  --sl-color-accent-low: #2c1c70;
+  --sl-color-accent: #6b4fe0;
+  --sl-color-accent-high: #d5c8ff;
+
+  /* "note" asides borrow feather-teal instead of Starlight's default blue */
+  --sl-color-blue-low: #0d3138;
+  --sl-color-blue: #2e97aa;
+  --sl-color-blue-high: #a2dbe4;
+
+  /* "tip" asides use the seal gold */
+  --sl-color-green-low: #4a3c14;
+  --sl-color-green: #f3ce6e;
+  --sl-color-green-high: #fbe7b6;
+}
+
+/* Light — a real second theme, not the dark palette left unchanged. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --sl-color-white: #1e1b29;
+  --sl-color-gray-1: #2a2438;
+  --sl-color-gray-2: #4a4460;
+  --sl-color-gray-3: #6b638a;
+  --sl-color-gray-4: #8d84ac;
+  --sl-color-gray-5: #c3bade;
+  --sl-color-gray-6: #e3dcf2;
+  --sl-color-gray-7: #ede8f8;
+  --sl-color-black: #f5f3fa;
+
+  --sl-color-bg: #f5f3fa;
+  --sl-color-bg-nav: #ece7f7;
+  --sl-color-bg-sidebar: #ece7f7;
+  --sl-color-bg-inline-code: #e3dcf2;
+  --sl-color-bg-accent: #4527a6;
+
+  --sl-color-text: var(--sl-color-gray-2);
+  --sl-color-text-accent: #4527a6;
+  --sl-color-text-invert: #f5f3fa;
+
+  --sl-color-hairline-light: #e3dcf2;
+  --sl-color-hairline: #d8d0ec;
+  --sl-color-hairline-shade: #cabfe6;
+  --sl-color-backdrop-overlay: hsla(258, 35%, 92%, 0.75);
+
+  /* accent = violet, deepened for AA-ish contrast on a light ground */
+  --sl-color-accent-low: #e4dcfa;
+  --sl-color-accent: #4527a6;
+  --sl-color-accent-high: #2e1a70;
+
+  /* "note" asides: deep teal on light, not the dark theme's bright cyan-teal */
+  --sl-color-blue-low: #d9edf1;
+  --sl-color-blue: #0f6e82;
+  --sl-color-blue-high: #073c46;
+
+  /* "tip" asides: dark amber reads as text on light; the dark theme's bright gold
+     doesn't have enough contrast against paper. */
+  --sl-color-green-low: #f5e8c8;
+  --sl-color-green: #8a5a0e;
+  --sl-color-green-high: #4a2f07;
+}
+
+:root {
+  --sl-font: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --sl-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+
+  /* Wider prose column than Starlight's 45rem default — this is reference
+     documentation with option tables and code blocks, not short-form prose. */
+  --sl-content-width: 62rem;
+}
+
+/* Headings carry the same warm serif as the landing page's display type. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4,
+starlight-toc nav > .top-level > li > a {
+  font-family: "Fraunces Variable", Georgia, "Times New Roman", serif;
+  letter-spacing: -0.01em;
+}
+
+.sl-markdown-content h1 { font-weight: 600; }
+.sl-markdown-content h2 { font-weight: 560; }
+
+/* Sidebar/current-page accents pick up the highest-contrast neutral rather than
+   reusing the violet accent everywhere, so active-state highlights read distinctly
+   from links in both themes. */
+starlight-tabs [aria-selected="true"],
+a[aria-current="page"] {
+  color: var(--sl-color-white);
+}
+
+site-search > button {
+  border-radius: 8px;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--sl-color-green) 35%, transparent);
+}

@@ -1,0 +1,93 @@
+---
+---
+
+<section id="top" class="hero no-rule">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">FeathersJS v5 · Model Context Protocol</p>
+      <h1>Bolt an MCP server<br />onto your <em>Feathers</em> app.</h1>
+      <p class="lede">
+        feathers-mcp plugs a full Model Context Protocol server into an existing FeathersJS
+        app as a regular service. No parallel auth stack, no side-channel session store —
+        every tool call is a real, authenticated Feathers call with a real <code class="inline">params.user</code>.
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/docs/">Read the docs</a>
+        <a class="btn btn-ghost" href="https://github.com/nesgarbo/feathers-mcp">GitHub</a>
+      </div>
+
+      <div class="pill-row">
+        <span class="pill"><span class="dot" style="background:var(--teal-light)"></span>Koa &amp; Express</span>
+        <span class="pill"><span class="dot" style="background:var(--violet-light)"></span>Authenticated tool calls</span>
+        <span class="pill"><span class="dot" style="background:var(--gold)"></span>One McpServer per session</span>
+        <span class="pill"><span class="dot" style="background:var(--ink-dim)"></span>TypeBox schemas</span>
+      </div>
+    </div>
+
+    <div class="hero-mark" aria-hidden="true">
+      <div class="mark-tile">
+        <img src="/logo-mark.svg" alt="" width="180" height="180" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero { padding-top: 64px; padding-bottom: 56px; }
+
+  .hero-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 48px;
+    align-items: center;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--teal-light);
+  }
+
+  .lede { margin-top: 22px; }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 34px;
+  }
+
+  .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+  }
+
+  .mark-tile {
+    aspect-ratio: 1;
+    border-radius: 28px;
+    background: radial-gradient(circle at 30% 20%, var(--bg-card), var(--bg));
+    border: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 30px 80px -30px rgba(69, 39, 166, 0.3);
+  }
+
+  .mark-tile img {
+    width: 46%;
+    height: auto;
+    animation: rise 0.7s ease both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @media (max-width: 780px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-mark { order: -1; max-width: 220px; margin: 0 auto; }
+  }
+</style>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-labelledby="feathersMcpMarkTitle">
+  <title id="feathersMcpMarkTitle">feathers-mcp mark</title>
+  <defs>
+    <linearGradient id="tealGrad" x1="26" y1="26" x2="100" y2="158" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3FB4C9"/>
+      <stop offset="1" stop-color="#155264"/>
+    </linearGradient>
+    <linearGradient id="violetGrad" x1="100" y1="26" x2="174" y2="158" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9179FF"/>
+      <stop offset="1" stop-color="#4527A6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- feather, split down the quill: teal barbs (FeathersJS) meeting violet barbs (MCP) at the fold -->
+  <polygon points="26,158 82,26 100,118" fill="url(#tealGrad)"/>
+  <polygon points="100,118 118,26 174,158" fill="url(#violetGrad)"/>
+
+  <!-- connector seal at the fold: the MCP transport plugged into the quill -->
+  <polygon points="80,90 120,90 120,116 100,144 80,116"
+           fill="#F3CE6E" stroke="#1E1B29" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M92,100 L92,118 M108,100 L108,118 M88,100 L112,100"
+        fill="none" stroke="#1E1B29" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

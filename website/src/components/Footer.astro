@@ -1,0 +1,74 @@
+---
+const year = new Date().getFullYear();
+---
+
+<footer>
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <img src="/logo-mark.svg" alt="" width="22" height="22" />
+      <span>feathers-mcp</span>
+    </div>
+    <p class="tagline">
+      MCP's Streamable HTTP transport, bolted onto a regular Feathers service — every
+      tool call is a real, authenticated Feathers call.
+    </p>
+    <nav>
+      <a href="/docs/">Docs</a>
+      <a href="https://github.com/nesgarbo/feathers-mcp">GitHub</a>
+      <a href="https://github.com/nesgarbo/feathers-mcp/blob/main/CHANGELOG.md">Changelog</a>
+    </nav>
+  </div>
+  <div class="wrap legal">
+    <span>© {year} · MIT</span>
+  </div>
+</footer>
+
+<style>
+  footer {
+    border-top: 1px solid var(--rule-soft);
+    padding: 56px 0 28px;
+  }
+
+  .foot-grid {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 40px;
+    align-items: start;
+  }
+
+  .foot-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .tagline {
+    color: var(--ink-faint);
+    font-size: 0.88rem;
+    max-width: 56ch;
+  }
+
+  nav {
+    display: flex;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  nav a { color: var(--ink-dim); text-decoration: none; }
+  nav a:hover { color: var(--ink); }
+
+  .legal {
+    margin-top: 36px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 780px) {
+    .foot-grid { grid-template-columns: 1fr; gap: 16px; }
+  }
+</style>

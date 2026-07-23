@@ -1,8 +1,28 @@
-# feathers-mcp
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-lockup-dark.svg">
+    <img src="assets/logo-lockup-light.svg" alt="feathers-mcp" width="380">
+  </picture>
+</p>
 
-[![Download Status](https://img.shields.io/npm/dm/feathers-mcp.svg?style=flat-square)](https://www.npmjs.com/package/feathers-mcp)
+<p align="center">
+  <a href="https://www.npmjs.com/package/feathers-mcp"><img alt="Download Status" src="https://img.shields.io/npm/dm/feathers-mcp.svg?style=flat-square"></a>
+  <a href="https://feathers-mcp.nesgarbo.com/docs/"><img alt="Documentation" src="https://img.shields.io/badge/docs-feathers--mcp.nesgarbo.com-4527A6?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-f3ce6e?style=flat-square"></a>
+</p>
 
-> MCP implementation for FeathersJS
+> MCP implementation for FeathersJS — plugs a Model Context Protocol server into an existing
+> FeathersJS v5 app as a regular service. Built by [nesgarbo](https://nesgarbo.com).
+
+There is no separate process to deploy or keep in sync: `feathers-mcp` registers the MCP
+transport as a normal Feathers custom service, so every tool call is a real, authenticated
+Feathers call — real hooks, real `params.user`, real authorization.
+
+**📖 Full documentation, in English and Spanish, lives at
+[feathers-mcp.nesgarbo.com](https://feathers-mcp.nesgarbo.com/docs/)** — architecture,
+a quickstart, a tool-authoring guide, the session model, and the
+upgrade notes from 1.x. This README stays intentionally shorter than the docs site; it's the
+"am I in the right place" overview, not the reference.
 
 ## Installation
 
@@ -51,9 +71,50 @@ This ensures TypeScript recognizes mcpToolHandler and the mcp-server service.
 
 You are responsible for implementing the authentication strategy and service for MCP API Keys.
 
-You must:
+**Already have your own API-key/token authentication strategy registered?** You don't need to
+register this library's `McpApiKeyStrategy` at all — point `feathersMcp()` at your existing
+strategy instead:
 
-- Create the mcp-api-keys service. _Name must be mcp-api-keys_
+```ts
+app.configure(
+  feathersMcp({
+    tools: [RepeatTextTool],
+    authStrategy: "api-key", // the name you already registered your strategy under
+    authField: "token", // defaults to 'apiKey' — whatever field your strategy reads
+  })
+);
+```
+
+`allowMcpApiKey()` extracts the key from the configured header and drives `authenticate(authStrategy)`
+with `{ strategy: authStrategy, [authField]: key }` — your existing strategy runs exactly as it
+would for any other authenticated request, and this library never sees `mcp-api-keys`.
+
+**Don't have one yet, but want to use this library's strategy against your own key/token
+service?** `McpApiKeyStrategy` looks up the key in a service, keyed by the key itself
+(`.get(apiKey)`), and expects a `userId`-like field and an `isActive`-like field on the record.
+**All three are overridable** — point it at your own service instead of creating a second one:
+
+```ts
+import { McpApiKeyStrategy } from "feathers-mcp";
+
+authentication.register(
+  "mcpApiKey",
+  new McpApiKeyStrategy({
+    service: "partner-tokens", // defaults to 'mcp-api-keys'
+    userIdField: "ownerId", // defaults to 'userId'
+    activeField: "enabled", // defaults to 'isActive'
+  })
+);
+```
+
+Whatever service you point it at just needs a `get(key)` that returns the matching record (or
+throws `NotFound`) — it doesn't need to be a dedicated table; a hook-adapted view over an
+existing one works too.
+
+If you'd rather start from scratch, here's the default shape (`mcp-api-keys`, `userId`,
+`isActive`) end to end:
+
+- Create the mcp-api-keys service.
 - Register mcpApiKey strategy in authentication.ts.
 
 Do this:
@@ -122,7 +183,9 @@ Add the authStrategy in default.json & production.json
 The MCP transport writes to the raw Node socket, so `feathers-mcp` passes it through Feathers params.
 You no longer need to declare `koaRequest`/`koaResponse` yourself — the library augments `Params`.
 
-Both Koa and Express are covered by the integration tests.
+Registration is identical on Koa and Express — both are covered end-to-end by the integration
+tests. See the [quickstart](https://feathers-mcp.nesgarbo.com/docs/quickstart/) for the couple of
+internal details that do differ between the two.
 
 If you use a dedicated header rather than `Authorization`, it carries the key bare:
 
@@ -193,8 +256,8 @@ emit("Fetching rows", { type: "log", level: "info" }); // log notification
 
 ## Return values
 
-A tool returns any combination of `text`, `json`, `image` and `resource`. Binary payloads are **raw
-base64** — no `data:` URI prefix:
+A tool returns any combination of `text`, `json`, `image` and `resource`. Binary payloads are
+**raw base64** — no `data:` URI prefix:
 
 ```ts
 return { image: { type: "image", data: base64, mimeType: "image/png" } };
@@ -229,7 +292,8 @@ DEBUG=feathers-mcp node app.js
 - Sessions are held in process memory, so running more than one instance requires sticky sessions.
 - Tool input schemas must be a `Type.Object`, and two tools may not share a name — both fail at boot.
 
-Upgrading from 1.x? See [CHANGELOG.md](CHANGELOG.md) — 2.0.0 carries breaking changes.
+Upgrading from 1.x? See [CHANGELOG.md](CHANGELOG.md) — 2.0.0 carries breaking changes, or the
+[upgrade guide](https://feathers-mcp.nesgarbo.com/docs/upgrading/) on the docs site.
 
 ---
 

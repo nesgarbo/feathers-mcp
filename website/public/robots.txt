@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://feathers-mcp.nesgarbo.com/sitemap-index.xml

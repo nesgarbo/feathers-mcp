@@ -1,0 +1,59 @@
+---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title = "feathers-mcp — an MCP server, bolted onto FeathersJS",
+  description = "Plug a Model Context Protocol server into an existing FeathersJS v5 app as a regular service — real hooks, real auth, real params, one service away.",
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonicalURL} />
+    <meta name="theme-color" content="#14121C" />
+
+    <!-- Applied before paint to avoid a flash of the wrong theme. Reads the same
+         `starlight-theme` localStorage key the docs site's theme picker writes to
+         (see Header.astro), so a choice made on either side of the site carries over. -->
+    <script is:inline>
+      (function () {
+        var stored = localStorage.getItem("starlight-theme");
+        var theme =
+          stored === "light" || stored === "dark"
+            ? stored
+            : matchMedia("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL("/og.png", Astro.site)} />
+    <meta property="og:url" content={canonicalURL} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL("/og.png", Astro.site)} />
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
