@@ -2,37 +2,51 @@ import type { HookContext, NextFunction } from '@feathersjs/feathers'
 
 const BEARER = /^Bearer\s+/i
 
+export interface AllowMcpApiKeyOptions {
+  /** Registered authentication strategy to run for this key. Defaults to 'mcpApiKey'. */
+  strategy?: string
+  /**
+   * Property the extracted header value is placed under on the authentication request object.
+   * Only matters if `strategy` points at a pre-existing strategy that expects a field other than
+   * `apiKey`. Defaults to 'apiKey'.
+   */
+  field?: string
+}
+
 /**
- * Rewrites `params.authentication` so the `mcpApiKey` strategy picks up the key from the configured
+ * Rewrites `params.authentication` so the configured strategy picks up the key from the configured
  * header. External calls only — an internal call already carries whatever authentication it needs.
  */
-export default () => async (context: HookContext, next: NextFunction) => {
-  const { params, app } = context
+export default (options: AllowMcpApiKeyOptions = {}) =>
+  async (context: HookContext, next: NextFunction) => {
+    const { params, app } = context
 
-  if (!params.provider || !params.headers) {
-    return next()
-  }
+    if (!params.provider || !params.headers) {
+      return next()
+    }
 
-  const configured: string = app.get('authentication')?.mcpApiKey?.header ?? 'Authorization'
-  const headerField = configured.toLowerCase()
-  const header = params.headers[headerField]
+    const strategy = options.strategy ?? 'mcpApiKey'
+    const field = options.field ?? 'apiKey'
+    const configured: string = app.get('authentication')?.[strategy]?.header ?? 'Authorization'
+    const headerField = configured.toLowerCase()
+    const header = params.headers[headerField]
 
-  if (typeof header === 'string') {
-    const apiKey = extractKey(header, headerField)
+    if (typeof header === 'string') {
+      const apiKey = extractKey(header, headerField)
 
-    if (apiKey) {
-      context.params = {
-        ...params,
-        authentication: {
-          strategy: 'mcpApiKey',
-          apiKey
+      if (apiKey) {
+        context.params = {
+          ...params,
+          authentication: {
+            strategy,
+            [field]: apiKey
+          }
         }
       }
     }
-  }
 
-  return next()
-}
+    return next()
+  }
 
 /**
  * `Authorization` carries a scheme, so the key has to be unwrapped from `Bearer <key>` — but only

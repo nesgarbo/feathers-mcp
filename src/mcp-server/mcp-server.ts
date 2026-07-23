@@ -68,9 +68,15 @@ export const mcpServer = (app: McpApplication) => {
     ...getTransportMiddleware(app)
   })
 
+  // Defaults to this library's own 'mcpApiKey' strategy, but a host app that already has its own
+  // API-key/token authentication strategy registered can point at that instead — see
+  // `FeathersMcpOptions.authStrategy`.
+  const strategy: string = app.get('mcpAuthStrategy') ?? 'mcpApiKey'
+  const field: string = app.get('mcpAuthField') ?? 'apiKey'
+
   app.service(mcpServerPath).hooks({
     around: {
-      all: [allowMcpApiKey(), authenticate('mcpApiKey')]
+      all: [allowMcpApiKey({ strategy, field }), authenticate(strategy)]
     }
   })
 }

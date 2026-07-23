@@ -97,6 +97,20 @@ describe.each([
     running = await createApp()
     await expect(connect(running.url, '')).rejects.toThrow()
   })
+
+  it('authenticates through a pre-existing host strategy, no mcp-api-keys service required', async () => {
+    // `authStrategy`/`authField` let a host app that already has its own API-key strategy point
+    // feathers-mcp at it, rather than being forced to register McpApiKeyStrategy as 'mcpApiKey'.
+    running = await createApp({ customAuthStrategy: true })
+    const { client } = await connect(running.url, 'key-bob')
+
+    expect(await whoami(client)).toBe('bob@example.com')
+  })
+
+  it('rejects an unknown token through the pre-existing host strategy', async () => {
+    running = await createApp({ customAuthStrategy: true })
+    await expect(connect(running.url, 'key-does-not-exist')).rejects.toThrow()
+  })
 })
 
 describe('tool results', () => {

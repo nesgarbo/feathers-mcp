@@ -175,6 +175,36 @@ describe('McpApiKeyStrategy', () => {
     })
     await expect(strategy.authenticate({ apiKey: 'k' }, {})).rejects.toThrow(/ECONNREFUSED/)
   })
+
+  it('reads a pre-existing API-key service under its own path and field names', async () => {
+    // A host app that already has its own API-key service shouldn't have to stand up a second one
+    // named `mcp-api-keys` just to satisfy this library's defaults.
+    const strategy = new McpApiKeyStrategy({
+      service: 'partner-tokens',
+      userIdField: 'ownerId',
+      activeField: 'enabled'
+    })
+    strategy.app = {
+      get: () => ({ service: 'users' }),
+      service: (name: string) =>
+        name === 'partner-tokens'
+          ? { get: async () => ({ ownerId: 7, enabled: true }) }
+          : { get: async () => ({ id: 7, email: 'owner@example.com' }) }
+    } as any
+
+    const result = await strategy.authenticate({ apiKey: 'k' }, {})
+    expect(result.user).toEqual({ id: 7, email: 'owner@example.com' })
+  })
+
+  it('rejects when the custom active field is falsy', async () => {
+    const strategy = new McpApiKeyStrategy({ service: 'partner-tokens', activeField: 'enabled' })
+    strategy.app = {
+      get: () => ({ service: 'users' }),
+      service: () => ({ get: async () => ({ userId: 7, enabled: false }) })
+    } as any
+
+    await expect(strategy.authenticate({ apiKey: 'k' }, {})).rejects.toThrow(/invalid api key/i)
+  })
 })
 
 describe('BaseTool.resourceFromUploadId', () => {
@@ -305,6 +335,17 @@ describe('allowMcpApiKey', () => {
 
   it('leaves internal calls alone', async () => {
     expect(await run({ authorization: 'Bearer abc123' }, undefined)).toBeUndefined()
+  })
+
+  it('drives a pre-existing strategy under its own name and field', async () => {
+    // A host app that already has its own API-key strategy shouldn't have to register this
+    // library's strategy as 'mcpApiKey' — `strategy`/`field` point at whatever it already has.
+    const context: any = {
+      app: { get: () => ({ 'partner-api-key': { header: 'Authorization' } }) },
+      params: { provider: 'rest', headers: { authorization: 'Bearer abc123' } }
+    }
+    await allowMcpApiKey({ strategy: 'partner-api-key', field: 'token' })(context, async () => {})
+    expect(context.params.authentication).toEqual({ strategy: 'partner-api-key', token: 'abc123' })
   })
 
   it('survives a request with no headers', async () => {

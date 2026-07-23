@@ -41,6 +41,19 @@ export interface FeathersMcpOptions {
   sessionTtlMs?: number
   /** Ceiling on concurrent sessions. Defaults to 1000; 0 disables the cap. */
   maxSessions?: number
+  /**
+   * Name of the registered Feathers authentication strategy to run for every MCP call. Defaults
+   * to 'mcpApiKey' — this library's own `McpApiKeyStrategy`, registered under that name. If your
+   * app already has its own API-key/token strategy registered, point this at it instead; you
+   * don't have to register `McpApiKeyStrategy` at all.
+   */
+  authStrategy?: string
+  /**
+   * Property the extracted header value is placed under on the authentication request object
+   * built for `authStrategy`. Only matters when `authStrategy` points at a pre-existing strategy
+   * expecting a field other than `apiKey`. Defaults to 'apiKey'.
+   */
+  authField?: string
 }
 
 export function feathersMcp(options: FeathersMcpOptions = {}) {
@@ -55,6 +68,12 @@ export function feathersMcp(options: FeathersMcpOptions = {}) {
     }
     if (options.maxSessions !== undefined) {
       app.set('mcpMaxSessions', options.maxSessions)
+    }
+    if (options.authStrategy !== undefined) {
+      app.set('mcpAuthStrategy', options.authStrategy)
+    }
+    if (options.authField !== undefined) {
+      app.set('mcpAuthField', options.authField)
     }
 
     for (const Tool of options.tools ?? []) {

@@ -1,4 +1,5 @@
-import { AuthenticationService } from '@feathersjs/authentication'
+import { AuthenticationBaseStrategy, AuthenticationService } from '@feathersjs/authentication'
+import type { AuthenticationRequest, AuthenticationResult } from '@feathersjs/authentication'
 import { NotFound } from '@feathersjs/errors'
 import express, { rest as expressRest, json, errorHandler as expressErrorHandler } from '@feathersjs/express'
 import type { Application as ExpressApplication } from '@feathersjs/express'
@@ -22,6 +23,24 @@ export const API_KEYS = [
   { id: 'key-bob', userId: 2, isActive: true },
   { id: 'key-revoked', userId: 1, isActive: false }
 ]
+
+/**
+ * Stands in for a host app that already has its own API-key authentication strategy registered
+ * under its own name, with its own field on the authentication request — not feathers-mcp's
+ * `McpApiKeyStrategy`, and never registered as 'mcpApiKey'. `feathersMcp({ authStrategy,
+ * authField })` should be able to drive this without the library ever knowing it exists.
+ */
+class PartnerApiKeyStrategy extends AuthenticationBaseStrategy {
+  async authenticate(authenticationRequest: AuthenticationRequest): Promise<AuthenticationResult> {
+    const { token } = authenticationRequest as { token?: string }
+    const record = API_KEYS.find((k) => k.id === token && k.isActive)
+    if (!record) throw new NotFound('Invalid token')
+
+    const app = this.app as McpApplication
+    const user = await app.service('users').get(record.userId)
+    return { authentication: { strategy: 'partner-api-key' }, user }
+  }
+}
 
 /** Just enough of a Feathers service to back the auth strategy. */
 class LookupService {
@@ -128,6 +147,12 @@ export interface TestAppOptions {
   maxSessions?: number
   /** Swaps the users service for one whose id field is `uuid`, as some host apps have. */
   uuidUsers?: boolean
+  /**
+   * Drives auth through a pre-existing host strategy (`PartnerApiKeyStrategy`, registered as
+   * 'partner-api-key' with a `token` field) instead of registering this library's own
+   * `McpApiKeyStrategy` under 'mcpApiKey'.
+   */
+  customAuthStrategy?: boolean
 }
 
 const configureCommon = (app: McpApplication, options: TestAppOptions = {}) => {
@@ -138,29 +163,37 @@ const configureCommon = (app: McpApplication, options: TestAppOptions = {}) => {
     ? API_KEYS.map((k) => ({ ...k, userId: `u-${k.userId}` }))
     : API_KEYS
 
+  const strategyName = options.customAuthStrategy ? 'partner-api-key' : 'mcpApiKey'
+
   app.set('authentication', {
     entity: 'user',
     entityId: options.uuidUsers ? 'uuid' : 'id',
     service: 'users',
     secret: 'test-secret-not-used-by-mcp-api-key',
-    authStrategies: ['mcpApiKey'],
-    mcpApiKey: { header: 'Authorization' }
+    authStrategies: [strategyName],
+    [strategyName]: { header: 'Authorization' }
   })
 
   app.use('users', new LookupService(users, options.uuidUsers ? 'uuid' : 'id'), {
     methods: ['get']
   })
-  app.use('mcp-api-keys', new LookupService(apiKeys), { methods: ['get'] })
 
   const authentication = new AuthenticationService(app)
-  authentication.register('mcpApiKey', new McpApiKeyStrategy())
+  if (options.customAuthStrategy) {
+    // No 'mcp-api-keys' service at all — the whole point is not needing one.
+    authentication.register('partner-api-key', new PartnerApiKeyStrategy())
+  } else {
+    app.use('mcp-api-keys', new LookupService(apiKeys), { methods: ['get'] })
+    authentication.register('mcpApiKey', new McpApiKeyStrategy())
+  }
   app.use('authentication', authentication)
 
   app.configure(
     feathersMcp({
       tools: [WhoamiTool, HiddenTool, BoomTool, EchoJsonTool],
       sessionTtlMs: options.sessionTtlMs,
-      maxSessions: options.maxSessions
+      maxSessions: options.maxSessions,
+      ...(options.customAuthStrategy ? { authStrategy: 'partner-api-key', authField: 'token' } : {})
     })
   )
 }
