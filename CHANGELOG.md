@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0]
+
+### Added
+
+- `authStrategy`/`authField` on `feathersMcp()`. A host app that already has its own API-key/token
+  authentication strategy registered can point MCP calls at it directly — `authenticate(authStrategy)`
+  runs with `{ strategy: authStrategy, [authField]: key }` — instead of also registering this
+  library's `McpApiKeyStrategy` under a fixed `mcpApiKey` name. Both default to today's behaviour
+  (`'mcpApiKey'`/`'apiKey'`), so this is purely additive.
+
+### Docs
+
+- New logo, a rewritten README, and a bilingual (English/Spanish) documentation site at
+  [feathers-mcp.nesgarbo.com](https://feathers-mcp.nesgarbo.com).
+
 ## [2.0.0]
 
 A correctness and security release. Several of the fixes below change behaviour, hence the major.
