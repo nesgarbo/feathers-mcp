@@ -14,21 +14,24 @@
 > MCP implementation for FeathersJS — plugs a Model Context Protocol server into an existing
 > FeathersJS v5 app as a regular service. Built by [nesgarbo](https://nesgarbo.com).
 
-There is no separate process to deploy or keep in sync: `feathers-mcp` registers the MCP
-transport as a normal Feathers custom service, so every tool call is a real, authenticated
-Feathers call — real hooks, real `params.user`, real authorization.
+There is no separate process to deploy or keep in sync: `feathers-mcp` registers the MCP handler
+as a normal Feathers custom service, so every tool call is a real, authenticated Feathers call —
+real hooks, real `params.user`, real authorization. It serves protocol revision **`2026-07-28`**
+and the 2025-era protocol off the same endpoint, statelessly.
 
 **📖 Full documentation, in English and Spanish, lives at
 [feathers-mcp.nesgarbo.com](https://feathers-mcp.nesgarbo.com/docs/)** — architecture,
-a quickstart, a tool-authoring guide, the session model, and the
-upgrade notes from 1.x. This README stays intentionally shorter than the docs site; it's the
+a quickstart, a tool-authoring guide, the stateless request model, and the
+upgrade notes. This README stays intentionally shorter than the docs site; it's the
 "am I in the right place" overview, not the reference.
 
 ## Installation
 
 ```bash
-npm install feathers-mcp --save
+npm install feathers-mcp @modelcontextprotocol/server @modelcontextprotocol/node --save
 ```
+
+Requires Node.js 20+ and a FeathersJS v5 app.
 
 ## Integration Steps
 
@@ -270,16 +273,14 @@ return { json: { type: "json", result: { rows } } };
 app.configure(
   feathersMcp({
     tools: [RepeatTextTool],
-    serverInfo: { name: "my-app", version: "2.0.0" }, // advertised on initialize
-    sessionTtlMs: 30 * 60 * 1000, // idle session timeout; 0 disables
-    maxSessions: 1000, // concurrent session ceiling; 0 disables
+    serverInfo: { name: "my-app", version: "2.0.0" }, // advertised to clients
   })
 );
 ```
 
 ## Debugging
 
-Session and tool tracing is off by default. Turn it on with:
+Request and tool tracing is off by default. Turn it on with:
 
 ```bash
 DEBUG=feathers-mcp node app.js
@@ -287,12 +288,14 @@ DEBUG=feathers-mcp node app.js
 
 ## Notes
 
-- Each MCP session gets its own `McpServer` and is bound to the user that opened it; another user
-  presenting the same session id is rejected with 403.
-- Sessions are held in process memory, so running more than one instance requires sticky sessions.
+- **Serving is stateless.** Every request is authenticated on its own and answered by a fresh
+  `McpServer` whose tool callbacks close over that request's params — there is no session to
+  expire, cap or hijack, and no sticky sessions needed to run more than one instance.
+- The 2025-era `GET` (standalone SSE stream) and `DELETE` (session termination) answer `405`.
+- `sessionTtlMs` and `maxSessions` are accepted but do nothing; remove them.
 - Tool input schemas must be a `Type.Object`, and two tools may not share a name — both fail at boot.
 
-Upgrading from 1.x? See [CHANGELOG.md](CHANGELOG.md) — 2.0.0 carries breaking changes, or the
+Upgrading? See [CHANGELOG.md](CHANGELOG.md) or the
 [upgrade guide](https://feathers-mcp.nesgarbo.com/docs/upgrading/) on the docs site.
 
 ---

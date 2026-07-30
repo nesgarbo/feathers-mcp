@@ -143,8 +143,6 @@ class EchoJsonTool extends BaseTool<
 }
 
 export interface TestAppOptions {
-  sessionTtlMs?: number
-  maxSessions?: number
   /** Swaps the users service for one whose id field is `uuid`, as some host apps have. */
   uuidUsers?: boolean
   /**
@@ -191,8 +189,6 @@ const configureCommon = (app: McpApplication, options: TestAppOptions = {}) => {
   app.configure(
     feathersMcp({
       tools: [WhoamiTool, HiddenTool, BoomTool, EchoJsonTool],
-      sessionTtlMs: options.sessionTtlMs,
-      maxSessions: options.maxSessions,
       ...(options.customAuthStrategy ? { authStrategy: 'partner-api-key', authField: 'token' } : {})
     })
   )

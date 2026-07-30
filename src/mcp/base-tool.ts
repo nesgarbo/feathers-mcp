@@ -111,4 +111,40 @@ export abstract class BaseTool<N extends string, I extends TSchema, O extends TS
       }
     }
   }
+
+  /**
+   * Fetches an upload and returns it as an image content block, or `undefined` if the upload is not
+   * an image (`contentType` does not start with `image/`).
+   *
+   * `params` is required for the same reason as in {@link resourceFromUploadId}: without it the
+   * `uploads` call is internal, every `if (context.params.provider)` authorization hook is skipped,
+   * and an id that came from the model turns the helper into an IDOR.
+   */
+  async imageFromUploadId(
+    uploadId: number | undefined,
+    params: McpParams
+  ): Promise<ImageToolResponse | undefined> {
+    if (uploadId === undefined) return
+
+    if (!params?.provider) {
+      throw new Error(
+        'feathers-mcp: imageFromUploadId needs the params passed to the tool handler, so the ' +
+          "uploads service sees an external call and applies the caller's permissions."
+      )
+    }
+
+    const upload = await this.app.service('uploads').get(uploadId, params)
+    if (!upload) {
+      throw new Error(`Upload with ID ${uploadId} not found`)
+    }
+
+    if (!upload.contentType?.startsWith('image/')) return
+
+    const signedUrl = upload.signedUrl
+    if (!signedUrl) return
+
+    const { data, mimeType } = await signedUrlToBase64(signedUrl)
+
+    return { type: 'image', data, mimeType }
+  }
 }

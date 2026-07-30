@@ -1,52 +1,52 @@
 ---
-title: Sessions
-description: One McpServer per session, bound to the user that opened it, reaped by idle TTL.
+title: Statelessness
+description: There are no sessions. Every request is authenticated and served on its own.
 ---
 
-**One `McpServer` per session, never shared.** The MCP SDK's `Protocol.connect()` keeps a
-single `_transport` slot and overwrites it on every connect — its own docstring says it assumes
-exclusive ownership. A server shared across sessions would route every response, and every
-`extra.sessionId`, to whichever session connected *last*: with two concurrent callers, caller
-A's tool call would execute as caller B's authenticated user.
+**There are no sessions.** Since 3.0.0, `feathers-mcp` serves MCP statelessly: one
+`createMcpHandler` builds a fresh `McpServer` per HTTP request, whose tool callbacks close over
+*that request's* Feathers params.
 
-Tool callbacks close over their own session object. There is deliberately no session-id lookup
-inside a handler — the handler simply cannot reach another session's state, by construction, not
-by convention.
+This is what MCP `2026-07-28` was designed around, and it deletes an entire class of problem
+rather than managing it.
 
-## Ownership
+## What went away, and why it no longer matters
 
-Sessions are bound to the principal that opened them (`ownerId`, resolved through
-`authentication.entityId` — not a hard-coded `id` field). A request presenting a valid session id
-that belongs to a *different* authenticated user is rejected with 403, rather than silently
-attaching to that session.
+| 2.x | 3.0.0 |
+| --- | --- |
+| A session map in process memory | Nothing is held between requests |
+| Idle TTL (`sessionTtlMs`) sweeping stale sessions | Nothing to expire |
+| Session cap (`maxSessions`) bounding allocation | Nothing to cap |
+| `ownerId` check rejecting a session id belonging to another user | No session id to present |
+| A per-request params map, swept in a `finally` so a rejected call couldn't pin the caller's API key | Params are a closure over one request, collected with it |
+| Sticky sessions required to run more than one instance | Any instance can serve any request |
 
-## Per-request params, not per-session params
+Each of those existed only to make *sessionful* serving safe. The per-request shape gives the same
+guarantees for free — a handler cannot reach another caller's context because it never had a
+reference to one.
 
-Within one session, several tool calls can be in flight at once. A handler gets the params of
-**its own** request via a map keyed on the request id — not a single mutable `session.params`
-that the next concurrent call would clobber.
+## Identity still rides on every call
 
-That map is cleaned up in a `finally`, not only from inside the tool callback: the MCP SDK skips
-the callback entirely for an unknown tool name or a schema-validation failure. Without the
-`finally`, every skipped call would pin the caller's params — the user object *and* the raw API
-key from the auth header — in memory for the life of the session. A client that calls an unknown
-tool name in a loop would otherwise grow the session's memory footprint without bound.
+Nothing about authentication changed. `allowMcpApiKey()` plus `authenticate()` still run as
+Feathers hooks on every MCP request, so a request either carries a valid key or never reaches the
+service. Your tool handler still gets a real `params.user`.
 
-## Lifecycle
+The difference is that this is now the *only* thing establishing identity. Under 2.x a request
+could present a session id and inherit the identity behind it; now every request proves who it is.
 
-Sessions are reaped two ways, both enforced **lazily** — swept on request, never on a timer,
-because a library has no business holding an interval open in a host app's event loop:
+## The two verbs that changed
 
-- **Idle TTL** (`sessionTtlMs`, default 30 minutes; `0` disables it).
-- **Count cap** (`maxSessions`, default 1000; `0` disables it).
+GET (the 2025-era standalone SSE stream) and DELETE (2025-era session termination) are session
+operations. Stateless serving answers both with **405**.
 
-The MCP client does **not** send DELETE on a plain `close()` — only on `terminateSession()` — so
-`transport.onclose` never fires on an ordinary disconnect. The idle TTL is the only thing that
-frees those sessions; without it, they'd accumulate for the life of the process.
+Nothing in this library used the standalone stream: tool notifications go out on the stream of the
+call that produced them, tagged with its request id. If you were relying on the GET stream
+directly, the modern replacement is `subscriptions/listen`.
 
-Sessions live in process memory. Running more than one instance of your app requires sticky
-sessions in front of it.
+## Options that are now no-ops
 
-See [Options](/docs/options/) for `sessionTtlMs`/`maxSessions`, and
-[Architecture](/docs/architecture/) for how the raw socket handoff and the session model fit
-together.
+`sessionTtlMs` and `maxSessions` are accepted and ignored, with a warning under
+`DEBUG=feathers-mcp`, so existing `feathersMcp()` calls don't break. Remove them.
+
+See [Architecture](/docs/architecture/) for how a request reaches a tool handler, and
+[Upgrading](/docs/upgrading/) for the full 3.0.0 delta.

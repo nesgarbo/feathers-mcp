@@ -1,5 +1,4 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it } from 'vitest'
 import { createExpressApp, createKoaApp, type TestApp } from './test-app.js'
 
@@ -131,7 +130,6 @@ describe('tool results', () => {
     const seen: number[] = []
     await client.callTool(
       { name: 'whoami', arguments: {} },
-      undefined,
       { onprogress: (p: any) => seen.push(p.progress) }
     )
 
@@ -141,8 +139,8 @@ describe('tool results', () => {
   })
 })
 
-describe('session lifecycle', () => {
-  it('runs concurrent calls on one session without crossing their params', async () => {
+describe('concurrency', () => {
+  it('runs concurrent calls without crossing their params', async () => {
     running = await createKoaApp()
     const { client } = await connect(running.url, 'key-alice')
 
@@ -154,158 +152,129 @@ describe('session lifecycle', () => {
       'alice@example.com'
     ])
   })
-
-  it('terminates a session on DELETE', async () => {
-    running = await createKoaApp()
-    const { client, transport } = await connect(running.url, 'key-alice')
-    const sessionId = transport.sessionId!
-
-    await transport.terminateSession()
-
-    const response = await fetch(running.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: 'Bearer key-alice',
-        'mcp-session-id': sessionId
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
-    })
-
-    expect(response.status).toBe(404)
-    await client.close().catch(() => {})
-  })
-
-  it('expires an idle session', async () => {
-    running = await createKoaApp({ sessionTtlMs: 60 })
-    const alice = await connect(running.url, 'key-alice')
-    expect(await whoami(alice.client)).toBe('alice@example.com')
-
-    await new Promise((resolve) => setTimeout(resolve, 120))
-
-    // The sweep is lazy, so another request has to come in to trigger it. Open a second session,
-    // then confirm the stale one is gone.
-    await connect(running.url, 'key-bob')
-
-    const response = await fetch(running.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: 'Bearer key-alice',
-        'mcp-session-id': alice.transport.sessionId!
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
-    })
-
-    expect(response.status).toBe(404)
-  })
 })
 
-describe('resource bookkeeping', () => {
-  const sessionsOf = (app: TestApp) => (app.app.service('mcp-server') as any).sessions
+/**
+ * Serving is stateless: `createMcpHandler` builds one `McpServer` per request, whose tool callbacks
+ * close over that request's Feathers params. What used to be enforced by session bookkeeping — an
+ * idle sweep, a session cap, an owner check against session hijacking, a per-request params map that
+ * had to be swept so a rejected call could not pin the caller's API key — is now a property of the
+ * shape. These assert that the shape actually holds, and that the session verbs fail honestly.
+ */
+describe('stateless serving', () => {
+  const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        ...headers
+      },
+      body: JSON.stringify(body)
+    })
 
-  it('does not retain per-call params after a call the SDK rejects', async () => {
+  it('serves a request that carries no session id at all', async () => {
+    // Under the old sessionful wiring this was a 400 'Missing mcp-session-id header'. It is now the
+    // ordinary case: nothing has to be opened first.
+    running = await createKoaApp()
+
+    const response = await post(
+      running.url,
+      { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+      { Authorization: 'Bearer key-alice' }
+    )
+
+    expect(response.status).toBe(200)
+  })
+
+  it('ignores a session id it never issued', async () => {
+    // No session table to miss against, so an invented id is simply irrelevant rather than a 404.
+    running = await createKoaApp()
+
+    const response = await post(
+      running.url,
+      { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} },
+      { Authorization: 'Bearer key-alice', 'mcp-session-id': '00000000-0000-4000-8000-000000000000' }
+    )
+
+    expect(response.status).toBe(200)
+  })
+
+  it('authenticates every request on its own, so no request rides another one in', async () => {
+    // The session-hijacking case the old `ownerId` check existed for: there is nothing to hijack,
+    // because a request with no valid key never reaches the service.
+    running = await createKoaApp()
+    const { client } = await connect(running.url, 'key-alice')
+    expect(await whoami(client)).toBe('alice@example.com')
+
+    const response = await post(running.url, {
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'tools/call',
+      params: { name: 'whoami', arguments: {} }
+    })
+
+    expect(response.status).toBe(401)
+  })
+
+  it('does not leak params between two principals calling at once', async () => {
+    running = await createKoaApp()
+    const alice = await connect(running.url, 'key-alice')
+    const bob = await connect(running.url, 'key-bob')
+
+    const results = await Promise.all([
+      whoami(alice.client, 120),
+      whoami(bob.client),
+      whoami(alice.client, 40),
+      whoami(bob.client, 80)
+    ])
+
+    expect(results).toEqual([
+      'alice@example.com',
+      'bob@example.com',
+      'alice@example.com',
+      'bob@example.com'
+    ])
+  })
+
+  it('answers the 2025-era session verbs with 405', async () => {
+    // GET (standalone SSE stream) and DELETE (session termination) are session operations, and
+    // stateless serving has no session. Refusing them is the SDK's own answer, in the shape a client
+    // expects — not a Feathers 404 or a hang.
+    running = await createKoaApp()
+
+    const get = await fetch(running.url, {
+      headers: { Accept: 'text/event-stream', Authorization: 'Bearer key-alice' }
+    })
+    const del = await fetch(running.url, {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer key-alice' }
+    })
+
+    expect(get.status).toBe(405)
+    expect(del.status).toBe(405)
+  })
+
+  it('survives a call the SDK rejects before the handler runs', async () => {
+    // An unknown tool name and a schema-validation failure both skip the tool callback. There is no
+    // per-session map left for them to pin, and the connection has to stay usable.
     running = await createKoaApp()
     const { client } = await connect(running.url, 'key-alice')
 
-    // The SDK skips the tool callback entirely for an unknown tool name or a schema-validation
-    // failure, so the cleanup that lived only inside that callback never ran. Every leaked entry
-    // pinned the caller's params — user object *and* the raw API key from the Authorization header.
     for (let i = 0; i < 5; i++) {
       await client.callTool({ name: 'no_such_tool', arguments: {} }).catch(() => {})
       await client.callTool({ name: 'echo_json', arguments: { value: 12345 } }).catch(() => {})
     }
-    await whoami(client)
-
-    const [session] = [...sessionsOf(running).values()] as any[]
-    expect(session.paramsByRequest.size).toBe(0)
-  })
-
-  it('refuses to open sessions past the cap', async () => {
-    running = await createKoaApp({ maxSessions: 2 })
-    await connect(running.url, 'key-alice')
-    await connect(running.url, 'key-alice')
-
-    // Without a cap, one valid key looping `initialize` allocates McpServer instances forever.
-    await expect(connect(running.url, 'key-alice')).rejects.toThrow()
-    expect(sessionsOf(running).size).toBe(2)
-  })
-})
-
-describe('host apps with a non-standard user id field', () => {
-  it('binds a session using authentication.entityId', async () => {
-    // A host whose users are keyed by `uuid` rather than `id` would otherwise never get a
-    // principal, and every `initialize` would 401.
-    running = await createKoaApp({ uuidUsers: true })
-    const { client } = await connect(running.url, 'key-alice')
 
     expect(await whoami(client)).toBe('alice@example.com')
   })
 })
 
-describe('session ownership', () => {
-  it("refuses to reuse another principal's session id", async () => {
-    running = await createKoaApp()
-    const alice = await connect(running.url, 'key-alice')
-    const sessionId = alice.transport.sessionId
-    expect(sessionId).toBeTruthy()
+describe('host apps with a non-standard user id field', () => {
+  it('resolves the user through authentication.entityId', async () => {
+    running = await createKoaApp({ uuidUsers: true })
+    const { client } = await connect(running.url, 'key-alice')
 
-    // Bob is a fully valid principal, but this session is not his.
-    const response = await fetch(running.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: 'Bearer key-bob',
-        'mcp-session-id': sessionId!
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 99,
-        method: 'tools/call',
-        params: { name: 'whoami', arguments: {} }
-      })
-    })
-
-    expect(response.status).toBe(403)
-    const body = await response.json()
-    expect(body.error.message).toMatch(/another principal/i)
-  })
-
-  it('rejects an unknown session id', async () => {
-    running = await createKoaApp()
-    // Open one valid session so the service is warm.
-    await connect(running.url, 'key-alice')
-
-    const response = await fetch(running.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: 'Bearer key-alice',
-        'mcp-session-id': '00000000-0000-4000-8000-000000000000'
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
-    })
-
-    expect(response.status).toBe(404)
-  })
-
-  it('rejects a non-initialize request that carries no session id', async () => {
-    running = await createKoaApp()
-
-    const response = await fetch(running.url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json, text/event-stream',
-        Authorization: 'Bearer key-alice'
-      },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })
-    })
-
-    expect(response.status).toBe(400)
+    expect(await whoami(client)).toBe('alice@example.com')
   })
 })

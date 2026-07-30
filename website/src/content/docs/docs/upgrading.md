@@ -1,9 +1,46 @@
 ---
-title: Upgrading from 1.x
-description: 2.0.0 is a correctness and security release with breaking changes.
+title: Upgrading
+description: 3.0.0 moves to MCP SDK v2 and serves protocol revision 2026-07-28.
 ---
 
-2.0.0 is a correctness and security release — several of the fixes change behaviour, hence the
+## Upgrading to 3.0.0
+
+3.0.0 moves off the retired monolithic `@modelcontextprotocol/sdk` v1 onto the v2 packages, and
+serves MCP protocol revision **`2026-07-28`** natively alongside the 2025-era protocol.
+
+### Change your peer dependencies
+
+`@modelcontextprotocol/sdk` is gone. Install the two packages that replace it:
+
+```bash
+npm remove @modelcontextprotocol/sdk
+npm install @modelcontextprotocol/server @modelcontextprotocol/node
+```
+
+Also required: **Node.js 20+** and **zod 4.2+** (v2's own peer floor).
+
+### Serving is now stateless
+
+There are no sessions. Every request is authenticated and served on its own, by a fresh
+`McpServer` whose tool callbacks close over that request's Feathers params.
+
+- `sessionTtlMs` and `maxSessions` are **no-ops** — accepted and ignored so your `feathersMcp()`
+  call doesn't break, but delete them.
+- 2025-era `GET` (standalone SSE stream) and `DELETE` (session termination) now answer **405**.
+  Nothing in this library used them.
+- Running more than one instance no longer needs sticky sessions.
+
+Full detail in [Statelessness](/docs/sessions/).
+
+### What did not change
+
+Tool authoring, `BaseTool`, TypeBox schemas, `emit`, return values, authentication strategies and
+every `feathersMcp()` option other than the two above are unchanged. Clients on the v1 SDK — which
+is what most host apps still ship — keep working without modification.
+
+## Upgrading from 1.x to 2.x
+
+2.0.0 was a correctness and security release — several of the fixes change behaviour, hence the
 major. Published versions jumped from 1.0.7 (the last 1.x release on npm) straight to 2.0.0.
 
 The headline fixes:

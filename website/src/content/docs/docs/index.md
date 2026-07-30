@@ -12,9 +12,9 @@ Feathers call, with a real `params.user` your existing hooks already understand.
 ## Where to start
 
 - **[Why](/docs/why/)** — the problem `feathers-mcp` solves, and why MCP's transport has to be bolted onto Feathers rather than dropped in as a normal route.
-- **[Architecture](/docs/architecture/)** — request flow, verb mapping, and the per-session server model.
+- **[Architecture](/docs/architecture/)** — request flow, verb mapping, and the stateless per-request server model.
 - **[Quickstart](/docs/quickstart/)** — copy-paste integration; Koa and Express register identically.
-- **Guides** — [writing tools](/docs/tools/), [sessions](/docs/sessions/), [notifications](/docs/notifications/), [calling other services](/docs/calling-services/), and [return values](/docs/return-values/).
-- **[Options](/docs/options/)**, **[debugging](/docs/debugging/)**, and **[upgrading from 1.x](/docs/upgrading/)**.
+- **Guides** — [writing tools](/docs/tools/), [statelessness](/docs/sessions/), [notifications](/docs/notifications/), [calling other services](/docs/calling-services/), and [return values](/docs/return-values/).
+- **[Options](/docs/options/)**, **[debugging](/docs/debugging/)**, and **[upgrading](/docs/upgrading/)**.
 
 Source and issues live on [GitHub](https://github.com/nesgarbo/feathers-mcp).

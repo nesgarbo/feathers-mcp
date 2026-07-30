@@ -1,5 +1,6 @@
 import { mcpServer } from './mcp-server/mcp-server.js'
 import { McpToolHandler } from './mcp/mcp-tool-handler.js'
+import { warn } from './mcp/logger.js'
 import type { McpApplication } from './mcp/app.js'
 import type { BaseTool } from './mcp/base-tool.js'
 
@@ -35,11 +36,20 @@ export type ToolClass = new (app: McpApplication) => BaseTool<any, any, any>
 
 export interface FeathersMcpOptions {
   tools?: ToolClass[]
-  /** Advertised to MCP clients on `initialize`. Defaults to the library's own name/version. */
+  /**
+   * Advertised to MCP clients — on `initialize` in the 2025 era, on `server/discover` in the 2026
+   * one. Defaults to the library's own name/version.
+   */
   serverInfo?: { name: string; version: string }
-  /** Idle timeout before a session is dropped. Defaults to 30 minutes; 0 disables expiry. */
+  /**
+   * @deprecated No-op since the move to MCP 2026-07-28. Serving is stateless — there are no
+   * sessions to expire — so this is accepted and ignored rather than breaking existing calls.
+   */
   sessionTtlMs?: number
-  /** Ceiling on concurrent sessions. Defaults to 1000; 0 disables the cap. */
+  /**
+   * @deprecated No-op since the move to MCP 2026-07-28. Serving is stateless, so there is no
+   * session count to cap; accepted and ignored rather than breaking existing calls.
+   */
   maxSessions?: number
   /**
    * Name of the registered Feathers authentication strategy to run for every MCP call. Defaults
@@ -63,11 +73,11 @@ export function feathersMcp(options: FeathersMcpOptions = {}) {
     if (options.serverInfo) {
       app.set('mcpServerInfo', options.serverInfo)
     }
-    if (options.sessionTtlMs !== undefined) {
-      app.set('mcpSessionTtlMs', options.sessionTtlMs)
-    }
-    if (options.maxSessions !== undefined) {
-      app.set('mcpMaxSessions', options.maxSessions)
+    if (options.sessionTtlMs !== undefined || options.maxSessions !== undefined) {
+      warn(
+        'sessionTtlMs/maxSessions are no-ops: MCP serving is stateless, so there are no sessions ' +
+          'to expire or cap. Remove them from feathersMcp().'
+      )
     }
     if (options.authStrategy !== undefined) {
       app.set('mcpAuthStrategy', options.authStrategy)

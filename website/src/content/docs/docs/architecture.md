@@ -1,14 +1,31 @@
 ---
 title: Architecture
-description: Request flow, verb mapping, and the per-session server model behind feathers-mcp.
+description: Request flow, verb mapping, and the stateless per-request server model behind feathers-mcp.
 ---
+
+## Two protocol eras, one endpoint
+
+The service holds a single MCP HTTP handler (`createMcpHandler` from
+`@modelcontextprotocol/server` v2, adapted to Node by `toNodeHandler`). It classifies every
+request by its own content:
+
+- **Modern** (`2026-07-28`) — the request carries the per-request `_meta` envelope, plus the
+  `MCP-Protocol-Version` and routable `Mcp-Method` headers. Served natively, including
+  `server/discover`.
+- **Legacy** (`2025-11-25` and earlier) — anything else. Served statelessly: a fresh instance
+  answers each request, and the `initialize` handshake still works exactly as a 2025-era client
+  expects.
+
+Clients on the retired `@modelcontextprotocol/sdk` v1 — which is what most host apps still ship —
+keep working unchanged.
 
 ## Verb mapping
 
-MCP POSTs every JSON-RPC message, GETs the bare endpoint for the standalone SSE stream, and
-DELETEs it to end the session. In Feathers an id-less GET maps to `find`, **not** `get` — so
-the SSE stream lands on `find`. Registering only `create`/`get` leaves the SSE stream returning
-405.
+MCP POSTs every JSON-RPC message in both eras. GET (the 2025-era standalone SSE stream) and
+DELETE (2025-era session termination) are session operations, and stateless serving answers them
+**405**. In Feathers an id-less GET maps to `find`, **not** `get`, so a GET lands on `find`; all
+four verbs are registered and forwarded anyway, so the refusal is the MCP SDK's own rather than a
+Feathers 404.
 
 ## Request flow
 
@@ -19,39 +36,30 @@ the SSE stream lands on `find`. Registering only `create`/`get` leaves the SSE s
    until that was fixed.
 2. **Telling the framework to keep out of the socket.** Under Koa, `ctx.respond = false` is set
    **only after `await next()` and only if `res.headersSent`** — setting it up front also gags
-   Koa's error handler, so an auth failure (which happens before the transport ever sees the
+   Koa's error handler, so an auth failure (which happens before the handler ever sees the
    request) would hang the client instead of returning 401. Express has no equivalent flag, so
    an `after` middleware stops the chain once `headersSent` is true, so the REST formatter can't
    set headers on a response that's already been sent.
 3. **Hooks.** `allowMcpApiKey()` pulls a `Bearer` key off the configured header and rewrites
-   `params.authentication` to the `mcpApiKey` strategy; `authenticate('mcpApiKey')` then runs.
-   Every MCP call is therefore an authenticated Feathers call, and tool handlers get a real
-   `params.user`.
+   `params.authentication` to the configured strategy; `authenticate()` then runs. Every MCP call
+   is therefore an authenticated Feathers call, and tool handlers get a real `params.user`.
 
-## Sessions
+## Stateless per-request serving
 
-**One `McpServer` per session, never shared.** The SDK's `Protocol.connect()` keeps a single
-`_transport` slot and overwrites it on every connect — its own docstring says it assumes
-exclusive ownership. A server shared across sessions therefore routes every response, and every
-`extra.sessionId`, to whichever session connected *last*. Tool callbacks close over their own
-session; there is deliberately no session-id lookup inside a handler. Sessions are also bound to
-the principal that opened them (resolved through `authentication.entityId`, not a hard-coded
-`id`), so a valid-but-different user cannot drive someone else's session.
+There is no session map, no idle sweep, no session cap and no session-ownership check. The
+handler's factory runs **once per request** and builds an `McpServer` whose tool callbacks close
+over that request's Feathers params — so a handler cannot be handed another caller's context,
+by construction rather than by bookkeeping.
 
-Within one session, a handler gets the params of *its own* request via a map keyed on the
-request id, not a single mutable `session.params` — several calls can be in flight at once. That
-map is cleaned up whether or not the tool callback ever ran: the SDK skips the callback entirely
-for an unknown tool name or a schema-validation failure, and every skipped call would otherwise
-pin the caller's params — including the raw API key — for the life of the session.
+Params reach the factory through the handler's pass-through `authInfo`: the service sets
+`req.auth`, `toNodeHandler` forwards it verbatim, and the factory reads it back off
+`ctx.authInfo`. Nothing in the MCP SDK reads, validates or transmits it.
 
-Sessions are reaped by idle TTL and capped by count, both swept lazily on request rather than on
-a timer — a library has no business holding an interval open in a host's event loop. The MCP
-client does **not** send DELETE on a plain `close()`, only on `terminateSession()`, so the idle
-TTL is the only thing that frees an ordinarily-disconnected session. Sessions live in process
-memory, so this does not scale horizontally without sticky sessions.
+Tool input schemas are converted **once at boot**, not per request, so a malformed TypeBox schema
+fails at startup with the offending tool's name on it rather than as a 500 on someone's first
+`tools/list`.
 
-Errors are written straight to the raw response, because under Koa's `respond = false` anything
-the service *returns* is silently dropped.
+See [Statelessness](/docs/sessions/) for what this replaced and why.
 
 ## Tools
 
@@ -61,9 +69,6 @@ the service *returns* is silently dropped.
   static and global — every authenticated key sees the same tool list, so per-user authorization
   belongs in Feathers hooks on the services a handler calls, not in the tool registry.
 - **Schemas are TypeBox at the author boundary, Zod at the SDK boundary.** The MCP SDK's schema
-  type doesn't accept raw JSON Schema, so a converter hand-translates TypeBox to Zod at
-  registration — a bad schema fails at boot with the tool's name on it, not as a 500 on the
-  first `initialize`.
+  type doesn't accept raw JSON Schema, so a converter hand-translates TypeBox to Zod.
 
-See [Writing tools](/docs/tools/) for the tool-authoring API in full, and
-[Sessions](/docs/sessions/) for the session lifecycle in more depth.
+See [Writing tools](/docs/tools/) for the tool-authoring API in full.

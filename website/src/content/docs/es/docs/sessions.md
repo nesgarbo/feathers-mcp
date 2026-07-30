@@ -1,54 +1,53 @@
 ---
-title: Sesiones
-description: Un McpServer por sesión, atado al usuario que la abrió, recolectado por TTL de inactividad.
+title: Sin estado
+description: No hay sesiones. Cada petición se autentica y se sirve por sí sola.
 ---
 
-**Un `McpServer` por sesión, nunca compartido.** `Protocol.connect()` del SDK de MCP mantiene un
-único slot `_transport` y lo sobrescribe en cada conexión — su propio docstring dice que asume
-propiedad exclusiva. Un servidor compartido entre sesiones enrutaría cada respuesta, y cada
-`extra.sessionId`, hacia quien conectó *último*: con dos llamantes concurrentes, la tool call
-del llamante A se ejecutaría como el usuario autenticado del llamante B.
+**No hay sesiones.** Desde 3.0.0, `feathers-mcp` sirve MCP sin estado: un único
+`createMcpHandler` construye un `McpServer` nuevo por cada petición HTTP, cuyos callbacks de
+tools capturan los params de Feathers *de esa petición*.
 
-Los callbacks de tools capturan su propio objeto de sesión. Deliberadamente no existe una
-búsqueda por session-id dentro de un handler — el handler simplemente no puede alcanzar el
-estado de otra sesión, por construcción, no por convención.
+Es el modelo para el que se diseñó MCP `2026-07-28`, y elimina una clase entera de problemas en
+vez de gestionarla.
 
-## Propiedad
+## Qué desapareció, y por qué ya no importa
 
-Las sesiones están atadas al principal que las abrió (`ownerId`, resuelto vía
-`authentication.entityId` — no un campo `id` hardcodeado). Una petición que presenta un id de
-sesión válido pero perteneciente a un usuario autenticado *distinto* se rechaza con 403, en vez
-de adjuntarse a esa sesión en silencio.
+| 2.x | 3.0.0 |
+| --- | --- |
+| Un mapa de sesiones en memoria del proceso | No se retiene nada entre peticiones |
+| TTL de inactividad (`sessionTtlMs`) barriendo sesiones muertas | No hay nada que expirar |
+| Tope de sesiones (`maxSessions`) limitando la reserva de memoria | No hay nada que topar |
+| Comprobación de `ownerId` rechazando un id de sesión de otro usuario | No hay id de sesión que presentar |
+| Un mapa de params por petición, barrido en un `finally` para que una llamada rechazada no dejara fijada la clave API del llamante | Los params son un closure sobre una petición, y se recolectan con ella |
+| Sticky sessions obligatorias para correr más de una instancia | Cualquier instancia puede servir cualquier petición |
 
-## Params por petición, no por sesión
+Cada una de esas piezas existía solo para hacer segura la operación *con sesiones*. La forma por
+petición da las mismas garantías gratis — un handler no puede alcanzar el contexto de otro
+llamante porque nunca tuvo una referencia a él.
 
-Dentro de una misma sesión, pueden haber varias tool calls en vuelo a la vez. Un handler recibe
-los params de **su propia** petición mediante un mapa indexado por el id de la petición — no un
-único `session.params` mutable que la siguiente llamada concurrente pisaría.
+## La identidad sigue viajando en cada llamada
 
-Ese mapa se limpia en un `finally`, no solo desde dentro del callback de la tool: el SDK de MCP
-se salta el callback por completo ante un nombre de tool desconocido o un fallo de validación de
-esquema. Sin el `finally`, cada llamada saltada dejaría fijados en memoria los params del
-llamante — el objeto de usuario *y* la clave API cruda de la cabecera de auth — durante toda la
-vida de la sesión. Un cliente que llame en bucle a un nombre de tool desconocido haría crecer sin
-límite la huella de memoria de la sesión.
+La autenticación no ha cambiado. `allowMcpApiKey()` más `authenticate()` siguen corriendo como
+hooks de Feathers en cada petición MCP, así que o la petición trae una clave válida o nunca llega
+al servicio. Tu handler de tool sigue recibiendo un `params.user` real.
 
-## Ciclo de vida
+La diferencia es que ahora eso es lo *único* que establece la identidad. En 2.x una petición podía
+presentar un id de sesión y heredar la identidad detrás de él; ahora cada petición demuestra quién
+es.
 
-Las sesiones se recolectan de dos formas, ambas aplicadas de forma **perezosa** — se barren en
-cada petición, nunca con un timer, porque una biblioteca no tiene por qué mantener un intervalo
-abierto en el event loop de la app anfitriona:
+## Los dos verbos que cambian
 
-- **TTL de inactividad** (`sessionTtlMs`, 30 minutos por defecto; `0` lo desactiva).
-- **Tope de cantidad** (`maxSessions`, 1000 por defecto; `0` lo desactiva).
+GET (el stream SSE independiente de la era 2025) y DELETE (terminación de sesión de la era 2025)
+son operaciones de sesión. Sin estado, ambos responden **405**.
 
-El cliente MCP **no** envía DELETE en un `close()` normal — solo en `terminateSession()` — así
-que `transport.onclose` nunca se dispara ante una desconexión ordinaria. El TTL de inactividad es
-lo único que libera esas sesiones; sin él, se acumularían durante toda la vida del proceso.
+Nada en esta biblioteca usaba el stream independiente: las notificaciones de una tool salen por el
+stream de la llamada que las produjo, etiquetadas con su id de petición. Si dependías del stream
+GET directamente, el reemplazo moderno es `subscriptions/listen`.
 
-Las sesiones viven en memoria del proceso. Correr más de una instancia de tu app requiere
-sesiones pegajosas (sticky sessions) delante.
+## Opciones que ahora no hacen nada
 
-Consulta [Opciones](/es/docs/options/) para `sessionTtlMs`/`maxSessions`, y
-[Arquitectura](/es/docs/architecture/) para cómo encajan el traspaso del socket crudo y el
-modelo de sesiones.
+`sessionTtlMs` y `maxSessions` se aceptan y se ignoran, con un aviso bajo `DEBUG=feathers-mcp`,
+para que las llamadas a `feathersMcp()` existentes no se rompan. Quítalas.
+
+Consulta [Arquitectura](/es/docs/architecture/) para ver cómo llega una petición a un handler de
+tool, y [Actualizar](/es/docs/upgrading/) para el delta completo de 3.0.0.

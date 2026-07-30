@@ -1,5 +1,5 @@
 import { Type } from '@feathersjs/typebox'
-import { ImageContentSchema, EmbeddedResourceSchema, TextContentSchema } from '@modelcontextprotocol/sdk/types.js'
+import { ImageContentSchema, EmbeddedResourceSchema, TextContentSchema } from "@modelcontextprotocol/core";
 import { describe, expect, it } from 'vitest'
 import { NotFound } from '@feathersjs/errors'
 import { transformToMcpResponse } from '../src/mcp-server/mcp-server.class.js'
@@ -246,6 +246,22 @@ describe('BaseTool.resourceFromUploadId', () => {
   it('refuses to run without params rather than silently bypassing authorization', async () => {
     const tool = new UploadTool(appWith([]))
     await expect(tool.resourceFromUploadId(7, 'file://x', {} as any)).rejects.toThrow(/params/i)
+  })
+
+  it('imageFromUploadId carries the same params requirement', async () => {
+    const tool = new UploadTool(appWith([]))
+    await expect(tool.imageFromUploadId(7, {} as any)).rejects.toThrow(/params/i)
+  })
+
+  it('imageFromUploadId returns nothing for an upload that is not an image', async () => {
+    const app = {
+      service: () => ({
+        get: async () => ({ contentType: 'application/pdf', signedUrl: 'https://x/y.pdf' })
+      })
+    } as any
+    const tool = new UploadTool(app)
+
+    expect(await tool.imageFromUploadId(7, { provider: 'rest' } as any)).toBeUndefined()
   })
 })
 

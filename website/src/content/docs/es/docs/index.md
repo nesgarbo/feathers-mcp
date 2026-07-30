@@ -11,10 +11,10 @@ llamada Feathers real y autenticada, con un `params.user` real que tus hooks ya 
 
 ## Por dónde empezar
 
-- **[Por qué](/es/docs/why/)** — el problema que resuelve `feathers-mcp`, y por qué el transporte de MCP tiene que ir montado sobre Feathers en lugar de añadirse como una ruta normal.
-- **[Arquitectura](/es/docs/architecture/)** — el flujo de la petición, el mapeo de verbos, y el modelo de servidor por sesión.
+- **[Por qué](/es/docs/why/)** — el problema que resuelve `feathers-mcp`, y por qué el handler de MCP tiene que ir montado sobre Feathers en lugar de añadirse como una ruta normal.
+- **[Arquitectura](/es/docs/architecture/)** — el flujo de la petición, el mapeo de verbos, y el modelo sin estado de un servidor por petición.
 - **[Guía rápida](/es/docs/quickstart/)** — integración copiar-pegar; Koa y Express se registran igual.
-- **Guías** — [escribir tools](/es/docs/tools/), [sesiones](/es/docs/sessions/), [notificaciones](/es/docs/notifications/), [llamar a otros servicios](/es/docs/calling-services/), y [valores de retorno](/es/docs/return-values/).
-- **[Opciones](/es/docs/options/)**, **[depuración](/es/docs/debugging/)**, y **[migrar desde 1.x](/es/docs/upgrading/)**.
+- **Guías** — [escribir tools](/es/docs/tools/), [sin estado](/es/docs/sessions/), [notificaciones](/es/docs/notifications/), [llamar a otros servicios](/es/docs/calling-services/), y [valores de retorno](/es/docs/return-values/).
+- **[Opciones](/es/docs/options/)**, **[depuración](/es/docs/debugging/)**, y **[actualizar](/es/docs/upgrading/)**.
 
 El código fuente y los issues están en [GitHub](https://github.com/nesgarbo/feathers-mcp).

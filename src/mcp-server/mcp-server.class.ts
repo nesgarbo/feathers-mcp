@@ -1,10 +1,14 @@
 // For more information about this file see https://dove.feathersjs.com/guides/cli/service.class.html#custom-services
 import type { Params, ServiceInterface } from '@feathersjs/feathers'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
-import type { ServerResponse } from 'node:http'
-import { randomUUID } from 'node:crypto'
+import { toNodeHandler } from '@modelcontextprotocol/node'
+import {
+  createMcpHandler,
+  McpServer,
+  type McpHttpHandler,
+  type McpRequestContext,
+  type ServerContext
+} from '@modelcontextprotocol/server'
+import type { ZodObject, ZodRawShape } from 'zod'
 import type { BaseTool, ToolResponse } from '../mcp/base-tool.js'
 import { getRawHttp, type McpApplication } from '../mcp/app.js'
 import { debug, warn } from '../mcp/logger.js'
@@ -12,24 +16,9 @@ import { typeboxToZodObject } from '../utils/typebox-to-zod-object.js'
 
 export interface McpServiceOptions {
   app: McpApplication
-  /** Advertised to MCP clients on `initialize`. */
+  /** Advertised to MCP clients — on `initialize` in the 2025 era, on `server/discover` in the 2026 one. */
   serverInfo?: { name: string; version: string }
-  /**
-   * Drop a session after this long without a request. The MCP client does not send DELETE on a
-   * plain `close()` — only on an explicit `terminateSession()` — so the ordinary disconnect never
-   * fires `transport.onclose` and the session, with the user object and API key in its params,
-   * would otherwise be pinned for the life of the process. 0 disables expiry.
-   */
-  sessionTtlMs?: number
-  /**
-   * Hard ceiling on concurrent sessions. Without one, a single valid API key looping `initialize`
-   * allocates unbounded `McpServer` instances. 0 disables the cap.
-   */
-  maxSessions?: number
 }
-
-const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000
-const DEFAULT_MAX_SESSIONS = 1000
 
 export interface McpParams extends Params {}
 
@@ -42,267 +31,130 @@ export interface EmitOptions {
 
 export type EmitFunction = (message: string, options?: EmitOptions | number) => void
 
-const SESSION_ID_HEADER_NAME = 'mcp-session-id'
-const JSON_RPC = '2.0'
-
-// JSON-RPC error codes. -32000..-32099 is the implementation-defined server range.
-const ERROR_INVALID_REQUEST = -32600
-const ERROR_INTERNAL = -32603
-const ERROR_UNKNOWN_SESSION = -32001
-const ERROR_UNAUTHENTICATED = -32002
-const ERROR_SESSION_FORBIDDEN = -32003
-const ERROR_TOO_MANY_SESSIONS = -32004
-
 /**
- * One MCP session. The `McpServer` is deliberately per-session rather than shared: the SDK's
- * `Protocol.connect()` keeps a single `_transport` slot and overwrites it on every connect, so a
- * server shared across sessions routes every response — and every `extra.sessionId` — to whichever
- * session connected last.
+ * The channel the caller's Feathers params ride to the per-request server factory on.
+ *
+ * `toNodeHandler` forwards `req.auth` verbatim as the handler's pass-through `authInfo`, and
+ * `createMcpHandler` hands that straight back to the factory on `ctx.authInfo` — the documented hook
+ * for a factory that varies by principal. Nothing in the SDK reads, validates or transmits it.
  */
-interface McpSession {
-  id: string
-  server: McpServer
-  transport: StreamableHTTPServerTransport
-  ownerId: string
-  lastSeenAt: number
-  /** Params of the request that opened the session; the fallback when a call has no request id. */
-  params: McpParams
-  /**
-   * Params keyed by JSON-RPC request id. A single session can have several requests in flight, and
-   * they do not all carry the same headers or query — keeping one mutable `params` on the session
-   * would let a later request's context leak into an earlier request's still-running handler.
-   */
-  paramsByRequest: Map<string | number, McpParams>
+const FEATHERS_PARAMS = 'feathers-mcp/params'
+
+/** A tool with its input schema already converted, so conversion happens once at boot, not per call. */
+interface RegisteredTool {
+  tool: BaseTool<any, any, any>
+  inputSchema: ZodObject<ZodRawShape>
 }
 
 /**
- * A host app's user id field is whatever its `authentication.entityId` says (or the users service's
- * own id property). Hard-coding `id ?? _id` locks out anyone using, say, `uuid` — and since a
- * session cannot be opened without a principal to bind it to, that would be a hard 401.
+ * MCP as a Feathers custom service.
+ *
+ * **Stateless, both eras, one handler.** `createMcpHandler` classifies every request by its own
+ * content: a 2026-07-28 request (the per-request `_meta` envelope) is served modern, anything else
+ * falls to `legacy: 'stateless'`, which answers a 2025-era client with a fresh instance per request.
+ * So there is no session map, no idle sweep, no session cap and no session ownership check — a
+ * request carries its own identity or it is not served, and the library holds nothing between
+ * requests. That also retires the old "does not scale horizontally without sticky sessions" caveat.
+ *
+ * The consequence worth knowing: 2025-era GET (the standalone SSE stream) and DELETE (session
+ * termination) are session operations, and stateless serving answers them `405`. Nothing here used
+ * the standalone stream — tool notifications go out on the stream of the call that produced them.
  */
-const getOwnerId = (app: McpApplication, params?: McpParams): string | undefined => {
-  const user = (params as any)?.user
-  if (!user) return undefined
-
-  const authConfig = app.get('authentication') ?? {}
-  const entityService: any = authConfig.service ? app.service(authConfig.service) : undefined
-  const idField: string = authConfig.entityId ?? entityService?.id ?? 'id'
-
-  const id = user[idField] ?? user.id ?? user._id
-  return id === undefined || id === null ? undefined : String(id)
-}
-
-/**
- * Written straight to the raw response rather than returned from the service method: the Koa
- * transport middleware sets `ctx.respond = false` so the MCP transport owns the socket, which
- * means anything this service returns is silently dropped.
- */
-const writeJsonRpcError = (
-  res: ServerResponse,
-  status: number,
-  code: number,
-  message: string,
-  id: string | number | null = null
-): void => {
-  if (res.headersSent) {
-    warn(`cannot send JSON-RPC error (${code}: ${message}), response already sent`)
-    return
-  }
-  res.writeHead(status, { 'Content-Type': 'application/json' })
-  res.end(JSON.stringify({ jsonrpc: JSON_RPC, id, error: { code, message } }))
-}
-
 export class McpServerService<ServiceParams extends McpParams = McpParams>
   implements ServiceInterface<any, any, ServiceParams, never>
 {
-  private sessions = new Map<string, McpSession>()
+  private readonly handler: McpHttpHandler
+  private readonly nodeHandler: ReturnType<typeof toNodeHandler>
+  /**
+   * Converted once here rather than inside the factory: the factory runs per request, and a bad
+   * TypeBox schema should fail at boot with the tool's name on it, not as a 500 on someone's first
+   * `tools/list`.
+   */
+  private readonly tools: RegisteredTool[]
 
-  constructor(public options: McpServiceOptions) {}
+  constructor(public options: McpServiceOptions) {
+    const registered: BaseTool<any, any, any>[] = options.app.get('mcpToolHandler')?.getForMcp() ?? []
+    this.tools = registered.map((tool) => ({ tool, inputSchema: typeboxToZodObject(tool.inputSchema) }))
 
-  /** POST — every JSON-RPC message the client sends, including `initialize`. */
+    this.handler = createMcpHandler((ctx) => this.createServer(ctx), {
+      legacy: 'stateless',
+      onerror: (error) => warn('MCP handler error:', error)
+    })
+    this.nodeHandler = toNodeHandler(this.handler, {
+      onerror: (error) => warn('MCP request could not be served:', error)
+    })
+  }
+
+  /** POST — every JSON-RPC message, both eras. */
   async create(data: any, params?: ServiceParams): Promise<any> {
-    const { req, res } = getRawHttp(this.options.app, params)
-    const sessionId = this.getSessionId(params)
-    const messageId = data?.id ?? null
-
-    debug('POST', { method: data?.method, sessionId })
-    this.expireIdleSessions()
-
-    try {
-      if (!sessionId) {
-        if (!isInitializeRequest(data)) {
-          writeJsonRpcError(
-            res,
-            400,
-            ERROR_INVALID_REQUEST,
-            `Missing ${SESSION_ID_HEADER_NAME} header for method '${data?.method}'`,
-            messageId
-          )
-          return
-        }
-        await this.openSession(data, params as McpParams, req, res)
-        return
-      }
-
-      const session = this.sessions.get(sessionId)
-      if (!session) {
-        writeJsonRpcError(res, 404, ERROR_UNKNOWN_SESSION, 'Unknown or expired session', messageId)
-        return
-      }
-      if (!this.ownsSession(session, params)) {
-        writeJsonRpcError(res, 403, ERROR_SESSION_FORBIDDEN, 'Session belongs to another principal', messageId)
-        return
-      }
-
-      session.lastSeenAt = Date.now()
-      const boundIds = bindParams(session, data, params as McpParams)
-
-      try {
-        await session.transport.handleRequest(req, res, data)
-      } finally {
-        // `handleRequest` resolves only after the tool handler has run (measured), so this cannot
-        // evict params a handler still needs. It is what bounds the map: the SDK skips the tool
-        // callback entirely for an unknown tool name or a schema-validation failure, and without
-        // this every such call would pin the caller's params — user object and raw API key — for
-        // the life of the session.
-        for (const id of boundIds) session.paramsByRequest.delete(id)
-      }
-    } catch (error) {
-      // Deliberately not closing the session: one malformed message should not evict a client that
-      // is otherwise healthy. A genuinely dead transport fires `onclose`, which does evict it.
-      warn('error handling MCP request:', error)
-      writeJsonRpcError(
-        res,
-        500,
-        ERROR_INTERNAL,
-        error instanceof Error ? error.message : String(error),
-        messageId
-      )
-    }
+    debug('POST', { method: data?.method })
+    return this.serve(params, data)
   }
 
   /**
-   * GET — the standalone SSE stream the client opens to receive server-initiated messages. MCP GETs
-   * the bare endpoint, and an id-less GET maps to `find` in Feathers, so this is the one that
-   * actually runs; `get` is the same handler for `GET /mcp-server/:id`.
+   * GET — the 2025-era standalone SSE stream. MCP GETs the bare endpoint, and an id-less GET maps to
+   * `find` in Feathers, so this is the one that actually runs. Stateless serving answers `405`;
+   * forwarded anyway so the refusal is the SDK's own, in the shape a client expects.
    */
   async find(params: ServiceParams): Promise<any> {
-    const { req, res } = getRawHttp(this.options.app, params)
-    const session = this.requireSession(params, res)
-    if (!session) return
-
-    await session.transport.handleRequest(req, res)
+    return this.serve(params)
   }
 
   async get(_id: string, params: ServiceParams): Promise<any> {
-    return this.find(params)
+    return this.serve(params)
   }
 
-  /** DELETE — explicit session termination, per the MCP Streamable HTTP spec. */
+  /** DELETE — 2025-era session termination; likewise `405`, with nothing to terminate. */
   async remove(_id: null | string, params: ServiceParams): Promise<any> {
-    const { req, res } = getRawHttp(this.options.app, params)
-    const session = this.requireSession(params, res)
-    if (!session) return
-
-    await session.transport.handleRequest(req, res)
-    this.closeSession(session.id)
+    return this.serve(params)
   }
 
   async teardown(): Promise<void> {
-    debug(`tearing down ${this.sessions.size} MCP session(s)`)
-    await Promise.all(
-      [...this.sessions.values()].map(async (session) => {
-        try {
-          await session.transport.close()
-          await session.server.close()
-        } catch (error) {
-          warn(`error closing session ${session.id}:`, error)
-        }
-      })
-    )
-    this.sessions.clear()
+    debug('closing the MCP handler')
+    await this.handler.close()
   }
 
-  private async openSession(
-    data: any,
-    params: McpParams,
-    req: any,
-    res: ServerResponse
-  ): Promise<void> {
-    const ownerId = getOwnerId(this.options.app, params)
-    if (!ownerId) {
-      // Without a stable principal there is nothing to bind the session to, so a later request
-      // carrying this session id could not be checked against its creator.
-      writeJsonRpcError(res, 401, ERROR_UNAUTHENTICATED, 'An authenticated user is required', data?.id ?? null)
-      return
+  private async serve(params: ServiceParams | undefined, data?: unknown): Promise<void> {
+    const { req, res } = getRawHttp(this.options.app, params)
+
+    // Read back on `ctx.authInfo` in `createServer`. The Feathers hooks have already authenticated
+    // this request, so `params.user` is set and the tools built below run as the right principal.
+    ;(req as any).auth = {
+      token: '',
+      clientId: 'feathers-mcp',
+      scopes: [],
+      extra: { [FEATHERS_PARAMS]: params }
     }
 
-    const maxSessions = this.options.maxSessions ?? DEFAULT_MAX_SESSIONS
-    if (maxSessions > 0 && this.sessions.size >= maxSessions) {
-      warn(`refusing to open a session: at the ${maxSessions}-session cap`)
-      writeJsonRpcError(res, 503, ERROR_TOO_MANY_SESSIONS, 'Too many active sessions', data?.id ?? null)
-      return
-    }
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID()
-    })
-
-    // Built before the id is known (the transport only assigns one while handling this request)
-    // and mutated in place, so the tool closures below always read live session state.
-    const session: McpSession = {
-      id: '',
-      server: undefined as unknown as McpServer,
-      transport,
-      ownerId,
-      lastSeenAt: Date.now(),
-      params,
-      paramsByRequest: new Map()
-    }
-    session.server = this.createServer(session)
-
-    transport.onclose = () => this.closeSession(session.id)
-    transport.onerror = (error) => warn(`transport error on session ${session.id}:`, error)
-
-    await session.server.connect(transport)
-    await transport.handleRequest(req, res, data)
-
-    if (!transport.sessionId) {
-      warn('transport did not assign a session id; session not retained')
-      return
-    }
-
-    session.id = transport.sessionId
-    this.sessions.set(session.id, session)
-    debug(`session opened: ${session.id} (owner ${ownerId})`)
+    // `data` is the already-parsed body (Koa's bodyParser, Express's json()), so nothing tries to
+    // read the Node stream a second time.
+    await this.nodeHandler(req as any, res as any, data)
   }
 
-  private createServer(session: McpSession): McpServer {
+  /**
+   * Builds the server for exactly one request. Tool callbacks close over that request's params, so a
+   * handler cannot be handed anyone else's context — the property the old per-session
+   * `paramsByRequest` map existed to preserve, now a consequence of the shape rather than
+   * bookkeeping that has to be swept.
+   */
+  private createServer(ctx: McpRequestContext): McpServer {
     const { name, version } = this.options.serverInfo ?? {
       name: 'feathers-mcp-server',
       version: '1.0.0'
     }
     const server = new McpServer({ name, version }, { capabilities: { tools: {}, logging: {} } })
 
-    const tools: BaseTool<any, any, any>[] = this.options.app.get('mcpToolHandler').getForMcp()
+    const params = (ctx.authInfo?.extra?.[FEATHERS_PARAMS] as McpParams | undefined) ?? {}
 
-    for (const tool of tools) {
+    for (const { tool, inputSchema } of this.tools) {
       server.registerTool(
         tool.name,
-        {
-          description: tool.description,
-          inputSchema: typeboxToZodObject(tool.inputSchema).shape
-        },
-        async (args: any, extra: any) => {
-          debug(`tool call on session ${session.id}: ${tool.name}`)
-          const emit = createEmit(extra, extra?._meta?.progressToken)
-          // The params of the very request that carried this call, not whatever landed on the
-          // session most recently — a session can have several calls in flight.
-          const callParams = session.paramsByRequest.get(extra?.requestId) ?? session.params
+        { description: tool.description, inputSchema },
+        async (args: any, toolCtx: ServerContext) => {
+          debug(`tool call (${ctx.era} era): ${tool.name}`)
 
           try {
-            const result = await tool.handler(args, callParams, emit)
-            return transformToMcpResponse(result)
+            return transformToMcpResponse(await tool.handler(args, params, createEmit(toolCtx)))
           } catch (error) {
             warn(`tool '${tool.name}' failed:`, error)
             return {
@@ -311,8 +163,6 @@ export class McpServerService<ServiceParams extends McpParams = McpParams>
               ],
               isError: true
             }
-          } finally {
-            session.paramsByRequest.delete(extra?.requestId)
           }
         }
       )
@@ -320,95 +170,16 @@ export class McpServerService<ServiceParams extends McpParams = McpParams>
 
     return server
   }
-
-  private getSessionId(params: Params | undefined): string | undefined {
-    const value = params?.headers?.[SESSION_ID_HEADER_NAME]
-    return typeof value === 'string' ? value : undefined
-  }
-
-  private ownsSession(session: McpSession, params: Params | undefined): boolean {
-    return session.ownerId === getOwnerId(this.options.app, params)
-  }
-
-  /** Resolves the caller's session, writing the appropriate JSON-RPC error if it cannot. */
-  private requireSession(params: Params, res: ServerResponse): McpSession | undefined {
-    this.expireIdleSessions()
-
-    const sessionId = this.getSessionId(params)
-    const session = sessionId ? this.sessions.get(sessionId) : undefined
-
-    if (!session) {
-      writeJsonRpcError(res, 404, ERROR_UNKNOWN_SESSION, 'Unknown or expired session')
-      return
-    }
-    if (!this.ownsSession(session, params)) {
-      writeJsonRpcError(res, 403, ERROR_SESSION_FORBIDDEN, 'Session belongs to another principal')
-      return
-    }
-
-    // A client holding only the SSE stream open is still a live client.
-    session.lastSeenAt = Date.now()
-    return session
-  }
-
-  private closeSession(sessionId: string | undefined): void {
-    if (!sessionId) return
-
-    const session = this.sessions.get(sessionId)
-    if (!session) return
-
-    // Delete first: `server.close()` closes the transport, whose `onclose` calls back in here, and
-    // the missing entry is what stops that from recursing.
-    this.sessions.delete(sessionId)
-    session.paramsByRequest.clear()
-    session.server.close().catch((error) => warn(`error closing server for ${sessionId}:`, error))
-
-    debug(`session closed: ${sessionId}`)
-  }
-
-  /**
-   * Swept lazily on each POST rather than on a timer: a library should not hold an interval open in
-   * a host app's event loop just to reap its own bookkeeping.
-   */
-  private expireIdleSessions(): void {
-    const ttl = this.options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS
-    if (ttl <= 0) return
-
-    const cutoff = Date.now() - ttl
-    for (const session of this.sessions.values()) {
-      if (session.lastSeenAt < cutoff) {
-        debug(`session expired: ${session.id}`)
-        this.closeSession(session.id)
-      }
-    }
-  }
 }
 
 /**
- * Remembers, per in-flight `tools/call`, the params of the request that carried it, so the handler
- * can be given its own caller's Feathers context. Only `tools/call` needs this, which is also what
- * keeps the map bounded — every entry is removed by the handler it was recorded for.
+ * Notifications go out through `ctx.mcpReq.notify`, which tags them with the originating request id
+ * so they land on the stream of the call that produced them. Sending straight down a transport would
+ * target the standalone SSE stream, which stateless serving does not have at all.
  */
-const bindParams = (session: McpSession, data: any, params: McpParams): (string | number)[] => {
-  session.params = params
-  const ids: (string | number)[] = []
+const createEmit = (ctx: ServerContext): EmitFunction => {
+  const progressToken = ctx.mcpReq._meta?.progressToken
 
-  for (const message of Array.isArray(data) ? data : [data]) {
-    if (message?.method === 'tools/call' && message.id !== undefined && message.id !== null) {
-      session.paramsByRequest.set(message.id, params)
-      ids.push(message.id)
-    }
-  }
-
-  return ids
-}
-
-/**
- * Notifications go out through the SDK's `extra.sendNotification`, which tags them with the
- * originating request id so they land on the same stream as the tool call. Sending straight down
- * the transport would target the standalone SSE stream, which a client that only POSTs never opens.
- */
-const createEmit = (extra: any, progressToken?: string | number): EmitFunction => {
   return (message, options) => {
     // A bare number means progress — the signature this shipped with.
     const opts: EmitOptions = typeof options === 'number' ? { progress: options } : options ?? {}
@@ -424,13 +195,15 @@ const createEmit = (extra: any, progressToken?: string | number): EmitFunction =
           params: { progressToken, progress: progress ?? 0, total, message }
         }
       : {
+          // Deprecated by 2026-07-28 (SEP-2577) but functional for at least twelve months, and still
+          // the only in-band log channel a 2025-era client understands.
           method: 'notifications/message' as const,
           params: { level, logger: 'feathers-mcp', data: message }
         }
 
     // Fire-and-forget: a tool must not fail because a progress update could not be delivered
     // (e.g. the client already disconnected).
-    void extra.sendNotification(notification).catch((error: unknown) => {
+    void ctx.mcpReq.notify(notification).catch((error: unknown) => {
       warn('failed to send notification:', error)
     })
   }
@@ -474,8 +247,6 @@ export const transformToMcpResponse = (result: ToolResponse<any>) => {
 export const getOptions = (app: McpApplication): McpServiceOptions => {
   return {
     app,
-    serverInfo: app.get('mcpServerInfo'),
-    sessionTtlMs: app.get('mcpSessionTtlMs'),
-    maxSessions: app.get('mcpMaxSessions')
+    serverInfo: app.get('mcpServerInfo')
   }
 }

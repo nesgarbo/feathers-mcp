@@ -1,12 +1,12 @@
 ---
 title: Por qué
-description: El transporte de MCP escribe directo al socket — por qué eso obliga a montarlo sobre Feathers en vez de añadirlo como una ruta.
+description: El handler de MCP escribe directo al socket — por qué eso obliga a montarlo sobre Feathers en vez de añadirlo como una ruta.
 ---
 
-El transporte Streamable HTTP de MCP no se comporta como un handler HTTP normal: escribe
-directamente sobre el socket crudo de Node, y espera ser dueño de ese socket durante toda la
-sesión. La mayoría de frameworks web — Feathers incluido — asumen lo contrario: el framework es
-dueño de la respuesta, y tu código devuelve un valor que el framework serializa.
+El handler HTTP de MCP no se comporta como un handler HTTP normal: escribe directamente sobre el
+socket crudo de Node, y espera ser dueño de ese socket mientras dura el intercambio. La mayoría de
+frameworks web — Feathers incluido — asumen lo contrario: el framework es dueño de la respuesta, y
+tu código devuelve un valor que el framework serializa.
 
 `feathers-mcp` existe para conciliar ambas cosas sin renunciar a ninguna. Mantienes tu app
 Feathers existente — sus hooks, sus estrategias de autenticación, sus servicios — y MCP obtiene
@@ -30,21 +30,19 @@ devolviendo 405.
 
 ### Hay que decirle al framework que se aparte, con cuidado
 
-Una vez el transporte ha escrito en el socket, Koa o Express no deben volver a escribir en él.
-Pero decirles que se aparten *antes* de que el transporte corra rompe el camino de error: un
-fallo de autenticación ocurre antes de que el transporte vea la petición, así que silenciar la
-maquinaria de respuesta del framework de antemano convierte un 401 en una conexión colgada. Mira
+Una vez el handler de MCP ha escrito en el socket, Koa o Express no deben volver a escribir en él.
+Pero decirles que se aparten *antes* de que el handler corra rompe el camino de error: un fallo de
+autenticación ocurre antes de que el handler vea la petición, así que silenciar la maquinaria de
+respuesta del framework de antemano convierte un 401 en una conexión colgada. Mira
 [Arquitectura](/es/docs/architecture/) para ver exactamente dónde se traza esa línea en Koa y en
 Express.
 
-### Una sesión, un servidor, sin excepciones
+### Un servidor por petición, nunca compartido
 
-`Protocol.connect()` del SDK de MCP mantiene un único slot de transporte por `McpServer` y lo
-sobrescribe en cada conexión. Si compartes un servidor entre sesiones, cada respuesta — y cada
-`extra.sessionId` — se enruta hacia quien conectó *último*. Con dos llamadas concurrentes, eso
-significa que la tool call del llamante A se ejecuta como el usuario autenticado del llamante B.
-`feathers-mcp` da a cada sesión su propio `McpServer` y lo ata al principal que la abrió, así que
-un usuario válido pero distinto que presente el mismo id de sesión es rechazado directamente.
+Se construye un `McpServer` nuevo para cada petición, y sus callbacks de tools capturan los params
+de Feathers de esa petición. Dos llamantes concurrentes no pueden ver el contexto del otro porque
+ninguno llega a tener una referencia al ajeno — sin tabla de sesiones, sin identidad que heredar,
+sin nada que secuestrar. Mira [Sin estado](/es/docs/sessions/).
 
 :::tip[La misma app Feathers, no una segunda]
 No hay un proceso MCP separado que desplegar, monitorizar o mantener sincronizado con las
