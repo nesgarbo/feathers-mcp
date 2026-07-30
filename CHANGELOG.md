@@ -3,6 +3,69 @@
 All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0]
+
+Moves off the retired monolithic `@modelcontextprotocol/sdk` v1 onto the v2 packages, and serves
+MCP protocol revision **`2026-07-28`** natively alongside the 2025-era protocol. `2026-07-28` drops
+the `initialize` handshake for a stateless `server/discover`; a client that speaks it — the v2 SDK
+client with `versionNegotiation: { mode: 'auto' }`, and hosts built on it — no longer has to fall
+back to reach this server.
+
+### Breaking
+
+- **Peer dependencies changed.** `@modelcontextprotocol/sdk` is replaced by
+  `@modelcontextprotocol/server` and `@modelcontextprotocol/node` (both `^2.0.0`):
+
+  ```bash
+  npm remove @modelcontextprotocol/sdk
+  npm install @modelcontextprotocol/server @modelcontextprotocol/node
+  ```
+
+  `zod` moves to `^4.4.3` (the v2 SDK's own floor is `>= 4.2`). Host apps do **not** have to
+  upgrade their own `zod`: no zod type appears anywhere in this library's public API, and tool
+  schemas are TypeBox at the author boundary, so a host on zod 3 resolves a nested zod 4 for this
+  package and keeps its own.
+
+- **Serving is stateless — there are no sessions.** One `McpServer` is built per HTTP request, and
+  its tool callbacks close over that request's Feathers params. Gone with them: the session map,
+  the idle sweep, the session cap, the `ownerId` check against session hijacking, and the
+  per-request params map. Each existed only to make sessionful serving safe; the per-request shape
+  gives the same guarantees by construction. Running more than one instance no longer needs sticky
+  sessions.
+
+- **`sessionTtlMs` and `maxSessions` are no-ops.** Still accepted, and ignored with a warning under
+  `DEBUG=feathers-mcp`, so an existing `feathersMcp()` call does not break. Remove them.
+
+- **2025-era `GET` (standalone SSE stream) and `DELETE` (session termination) answer `405`.** Both
+  are session operations. Nothing in this library used the standalone stream — tool notifications go
+  out on the stream of the call that produced them.
+
+- **Node.js 20+** is required (the v2 SDK's floor).
+
+### Added
+
+- Native `server/discover`, per-request `_meta` envelope, and the `MCP-Protocol-Version` /
+  `Mcp-Method` headers of revision `2026-07-28`.
+- `BaseTool.imageFromUploadId(uploadId, params)` — the sibling of `resourceFromUploadId`, returning
+  an upload as an MCP image content block, or `undefined` when its `contentType` is not an image.
+  `params` is required for the same reason: without it the `uploads` call is internal and every
+  `if (context.params.provider)` authorization hook is skipped.
+- `test/protocol-negotiation.test.ts` drives both eras end to end — the v2 client on `mode: 'auto'`
+  (must select modern without falling back), the same client pinned to `2026-07-28` (pin mode fails
+  loudly unless `server/discover` really offers the revision), and the **real v1 SDK client**, which
+  is what host apps in the field still ship, for connect/list/call plus progress notifications.
+
+### Changed
+
+- Tool input schemas are converted to Zod once in the service constructor rather than per session,
+  so a malformed TypeBox schema fails at boot with the offending tool's name on it.
+- `emit` now goes out through v2's `ctx.mcpReq.notify` instead of `extra.sendNotification`.
+
+### Unchanged
+
+Tool authoring, `BaseTool`, TypeBox schemas, `emit`, return values, authentication strategies and
+every other `feathersMcp()` option. Clients on the v1 SDK keep working without modification.
+
 ## [2.1.0]
 
 ### Added

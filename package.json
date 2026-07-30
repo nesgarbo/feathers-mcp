@@ -1,7 +1,7 @@
 {
   "name": "feathers-mcp",
   "description": "MCP implementation for FeathersJS",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "type": "module",
   "homepage": "https://github.com/nesgarbo/feathers-mcp",
   "main": "./dist/index.cjs",
@@ -71,7 +71,8 @@
     "@feathersjs/feathers": "^5.0.0",
     "@feathersjs/koa": "^5.0.0",
     "@feathersjs/typebox": "^5.0.0",
-    "@modelcontextprotocol/sdk": "^1.29.0"
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0"
   },
   "peerDependenciesMeta": {
     "@feathersjs/express": {
@@ -89,10 +90,14 @@
     "@feathersjs/feathers": "^5.0.46",
     "@feathersjs/koa": "^5.0.46",
     "@feathersjs/typebox": "^5.0.46",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@types/node": "^26.1.1",
-    "eslint": "^10.7.0",
-    "tsdown": "^0.22.13",
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@modelcontextprotocol/core": "^2.0.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@types/node": "^26.1.2",
+    "eslint": "^10.8.0",
+    "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"
